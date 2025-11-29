@@ -1,0 +1,183 @@
+name: voxlock
+services:
+  # =========================
+  # BACKEND (.NET 10)
+  # =========================
+  backend:
+    container_name: backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:8080"
+      - "5001:8081"
+    environment:
+      ASPNETCORE_URLS: "http://0.0.0.0:8080"
+      S3_ENDPOINT: http://garage:3900
+      S3_BUCKET: ${S3_BUCKET}
+      S3_KEY_ID: ${S3_KEY_ID}
+      S3_KEY_SECRET: ${S3_KEY_SECRET}
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+      - redis
+      - garage
+      - janus
+    networks:
+      - app-network
+
+  # =========================
+  # FRONTEND (React + Nginx)
+  # =========================
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  # =========================
+  # POSTGRES
+  # =========================
+  postgres:
+    container_name: postgres
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # =========================
+  # PGADMIN
+  # =========================
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "8085:80"
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  # =========================
+  # REDIS
+  # =========================
+  redis:
+    container_name: redis
+    image: redis:7.2
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  # =========================
+  # REDISINSIGHT
+  # =========================
+  redisinsight:
+    container_name: redisinsight
+    image: redis/redisinsight:latest
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
+  # =========================
+  # GARAGE (S3 Storage)
+  # =========================
+  garage:
+    container_name: garage
+    image: dxflrs/garage:v2.1.0
+    volumes:
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+      - ./garage.toml:/etc/garage.toml
+    ports:
+      - "3900:3900"   # S3 API
+      - "3901:3901"   # RPC
+      - "3902:3902"   # Admin API
+    environment:     
+      - GARAGE_RPC_SECRET=${GARAGE_RPC_SECRET}
+      - GARAGE_ADMIN_TOKEN=${GARAGE_ADMIN_TOKEN}
+      - GARAGE_METRICS_TOKEN=${GARAGE_METRICS_TOKEN}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_KEY_ID=${S3_KEY_ID}
+      - S3_KEY_SECRET=${S3_KEY_SECRET}
+    networks:
+      - app-network
+  # =========================
+  # GARAGE WEBUI
+  # =========================
+  garage-webui:
+    image: khairul169/garage-webui:latest
+    container_name: garage-webui
+    restart: unless-stopped
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+    ports:
+      - "3909:3909"
+    environment:
+      API_BASE_URL: "http://garage:3902"      # Admin API endpoint
+      S3_ENDPOINT_URL: "http://garage:3900"   # S3 API 
+      API_ADMIN_KEY: "${GARAGE_ADMIN_TOKEN}"  # Bearer token
+    networks:
+      - app-network
+
+  # =========================
+  # JANUS WebRTC SFU
+  # =========================
+  janus:
+    container_name: janus
+    image: sucwangsr/janus-webrtc-gateway-docker:latest
+    volumes:
+      - ./janus.jcfg:/usr/local/etc/janus/janus.jcfg
+    ports:
+      - "8188:8188"          # WebSockets
+      - "8088:8088"          # Admin/REST API 
+      - "10000-10200:10000-10200/udp"  # RTP/RTCP media
+    networks:
+      - app-network
+    restart: unless-stopped
+
+# =========================
+# NETWORKS
+# =========================
+networks:
+  app-network:
+    driver: bridge
+
+# =========================
+# VOLUMES
+# =========================
+volumes:
+  postgres_data:
+  redis_data:
+  garage_meta:
+  garage_data:
+
