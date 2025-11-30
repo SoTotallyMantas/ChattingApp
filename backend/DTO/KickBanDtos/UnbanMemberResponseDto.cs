@@ -2,5 +2,6 @@
 {
     public class UnbanMemberResponseDto
     {
+        public bool Success { get; set; }
     }
 }

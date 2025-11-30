@@ -9,6 +9,7 @@
         public bool IsMuted { get; set; }
         public bool IsDeafened { get; set; }
         public bool IsVideo { get; set; }
+        public bool IsStreaming { get; set; }
 
         public Channels Channel { get; set; } = default!;
         public Users User { get; set; } = default!;

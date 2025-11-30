@@ -2,5 +2,6 @@
 {
     public class DeleteMessageResponseDto
     {
+        public bool Success { get; set; }
     }
 }

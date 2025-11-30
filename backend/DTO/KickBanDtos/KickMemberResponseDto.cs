@@ -2,5 +2,6 @@
 {
     public class KickMemberResponseDto
     {
+        public bool Success { get; set; }
     }
 }

@@ -2,5 +2,6 @@
 {
     public class DeleteMessageRequestDto
     {
+        public Guid MessageId { get; set; }
     }
 }

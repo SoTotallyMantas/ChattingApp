@@ -2,5 +2,7 @@
 {
     public class UnbanMemberRequestDto
     {
+        public Guid ServerGuid { get; set; }
+        public Guid UserGuid { get; set; }
     }
 }

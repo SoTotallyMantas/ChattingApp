@@ -2,5 +2,7 @@
 {
     public class DeleteRoleRequestDto
     {
+        public Guid RoleId { get; set; }
+
     }
 }
