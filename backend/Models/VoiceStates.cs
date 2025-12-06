@@ -6,7 +6,7 @@
         public Guid ChannelGuid {  get; set; }
         public Guid UserGuid { get; set; }
         public DateTime JoinedAt { get; set;  }
-        public bool IsMuted { get; set; }
+        public bool IsMuted { get; set; } 
         public bool IsDeafened { get; set; }
         public bool IsVideo { get; set; }
         public bool IsStreaming { get; set; }

@@ -7,10 +7,12 @@ EXPOSE 8080
 EXPOSE 8081
 
 
+
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+
 COPY ["backend.csproj", "./"]
 RUN dotnet restore "./backend.csproj"
 COPY . .
@@ -25,5 +27,11 @@ RUN dotnet publish "./backend.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
+
+# Required for Npgsql / EF Core (SCRAM / GSSAPI)
+RUN apt-get update \
+    && apt-get install -y libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "backend.dll"]

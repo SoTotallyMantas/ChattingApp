@@ -7,12 +7,16 @@
 
         public Guid ServerGuid { get; set; }
 
-        public Guid ParentGuid { get; set; }
+        public Guid? ParentGuid { get; set; }
+        public int Position { get; set; }
+        public Channels? Parent { get; set; }
+        public ICollection<Channels> Children { get; set; } = [];
 
         public string Type { get; set; } = default!;
 
         public Servers Servers { get; set; } = default!;
-        public Channels? Parent { get; set; }
+      
         public VoiceChannels? VoiceChannels { get; set; }
+        public ICollection<Messages> Messages { get; set; } = [];
     }
 }

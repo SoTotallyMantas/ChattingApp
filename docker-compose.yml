@@ -18,16 +18,22 @@ services:
       S3_KEY_ID: ${S3_KEY_ID}
       S3_KEY_SECRET: ${S3_KEY_SECRET}
 
+      JWT_SECRET_KEY: ${JWT_SECRET}
+
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${POSTGRES_USER}
       DB_PASS: ${POSTGRES_PASSWORD}
     depends_on:
-      - postgres
-      - redis
-      - garage
-      - janus
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      garage:
+        condition: service_started
+      janus:
+        condition: service_started
     networks:
       - app-network
 
@@ -59,6 +65,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -78,6 +90,8 @@ services:
       - "8085:80"
     depends_on:
       - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
     networks:
       - app-network
 
@@ -180,4 +194,5 @@ volumes:
   redis_data:
   garage_meta:
   garage_data:
+  pgadmin_data:
 

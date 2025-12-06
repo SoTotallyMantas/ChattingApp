@@ -2,7 +2,7 @@
 {
     public class EditRoleRequestDto
     {
-        public Guid RoleId { get; set; }
+        public Guid RoleGuid { get; set; }
         public required string RoleName { get; set; }
         public required string RoleColor { get; set; }
         public int Position { get; set; }

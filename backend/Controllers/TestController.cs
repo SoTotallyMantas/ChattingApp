@@ -9,22 +9,24 @@ namespace backend.Controllers
     [Route("test")]
     public class TestController : ControllerBase
     {
+        /*
         private readonly IConnectionMultiplexer _redis;
         private readonly IAmazonS3 _s3;
-        private readonly VoxlockDbContext _db;
-        public TestController(VoxlockDbContext db, IAmazonS3 s3, IConnectionMultiplexer redis)
+        //private readonly VoxlockDbContext _db;
+        public TestController( IAmazonS3 s3, IConnectionMultiplexer redis)
         {
             _redis = redis;
             _s3 = s3;
-            _db = db;
+          //  _db = db;
         }
         [HttpGet("postgres")]
         public async Task<IActionResult> TestPostgres()
         {
             try
             {
-                var connect = _db.Database.CanConnect();
-                return Ok($"EF Core PostgreSQL: {(connect ? "OK" : "FAILED")}");
+                //  var connect = _db.Database.CanConnect();
+                // return Ok($"EF Core PostgreSQL: {(connect ? "OK" : "FAILED")}");
+                return Ok();
 
             }
             catch (Exception ex)
@@ -101,6 +103,7 @@ namespace backend.Controllers
             }
 
         }
+        */
 
     }
 }
