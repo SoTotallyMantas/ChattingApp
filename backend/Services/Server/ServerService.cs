@@ -9,12 +9,13 @@ using System.Security.Claims;
 
 namespace backend.Services.Server
 {
-    public class ServerService(VoxlockDbContext db,IPermissionService perm,IServerHelper helper) : IServerService
+    public class ServerService(VoxlockDbContext db,IPermissionService perm,IServerHelper helper, IS3StorageService storage) : IServerService
     {
 
         private readonly VoxlockDbContext _db = db;
         private readonly IPermissionService _perm = perm;
         private readonly IServerHelper _helper = helper;
+        private readonly IS3StorageService _storage = storage;
 
         public async Task<List<ServerResponseDto>> GetMyServersAsync(ClaimsPrincipal user)
         {
@@ -50,7 +51,7 @@ namespace backend.Services.Server
             {
                 ServerGuid = Guid.NewGuid(),
                 ServerName = dto.ServerName,
-                IconURL = dto.IconUrl,
+                IconKey = dto.IconKey,
                 OwnerGuid = userGuid,
                 CreatedAt = DateTime.UtcNow,
             };
@@ -84,6 +85,35 @@ namespace backend.Services.Server
                 });
             }
             await _db.SaveChangesAsync();
+            // Default member role
+            var defaultRole = new ServerRoles
+            {
+                RoleGuid = Guid.NewGuid(),
+                ServerGuid = server.ServerGuid,
+                RoleName = "Default",
+                Color = "#5865F2",
+                IsAdmin = false,
+                IsDefault = true,
+                Position = 100
+            };
+
+            _db.ServerRoles.Add(defaultRole);
+            await _db.SaveChangesAsync();
+
+            var defaultPerms = new[] { AppPermissions.VIEW_SERVER, AppPermissions.SEND_MESSAGES };
+            foreach (var perm in defaultPerms)
+            {
+                _db.ServerRolePermissions.Add(new ServerRolePermissions
+                {
+                    RoleGuid = defaultRole.RoleGuid,
+                    PermissionsGuid = await _db.Permissions
+                        .Where(p => p.Name == perm)
+                        .Select(p => p.PermissionGuid)
+                        .FirstAsync()
+                });
+            }
+            await _db.SaveChangesAsync();
+
             _db.ServerUserRoles.Add(new ServerUserRoles
             {
                 ServerGuid = server.ServerGuid,
@@ -91,8 +121,16 @@ namespace backend.Services.Server
                 RoleGuid = ownerRole.RoleGuid,
                 AddedAt = DateTime.UtcNow
             });
+            _db.ServerUserRoles.Add(new ServerUserRoles
+            {
+                ServerGuid = server.ServerGuid,
+                UserGuid = userGuid,
+                RoleGuid = defaultRole.RoleGuid,
+                AddedAt = DateTime.UtcNow
+            });
+
             await _db.SaveChangesAsync();
-          
+
             _db.ServerMembers.Add(new ServerMembers
             {
                 ServerGuid = server.ServerGuid,
@@ -118,7 +156,7 @@ namespace backend.Services.Server
                 throw new UnauthorizedAccessException("Only the server owner can modify the server.");
 
             server.ServerName = dto.ServerName;
-            server.IconURL = dto.IconUrl;
+            server.IconKey = dto.IconKey;
 
             await _db.SaveChangesAsync();
 
@@ -177,6 +215,39 @@ namespace backend.Services.Server
             await _db.SaveChangesAsync();
         }
 
+        public async Task<(Stream stream, string contentType)?> GetServerIconAsync(Guid serverGuid, CancellationToken ct)
+        {
+            var server = await _db.Servers.AsNoTracking().FirstOrDefaultAsync(s => s.ServerGuid == serverGuid, ct);
+            if (server?.IconKey == null) return null;
+            return await _storage.DownloadAsync(server.IconKey, ct);
+        }
+
+        public async Task<string> UploadServerIconAsync(Guid serverGuid, ClaimsPrincipal user, Stream fileStream, string contentType, CancellationToken ct)
+        {
+            Guid userGuid = user.GetUserGuid();
+
+            var server = await _helper.GetServerOrThrowAsync(serverGuid);
+            if (server.OwnerGuid != userGuid)
+            {
+                await _perm.RequireAsync(serverGuid, userGuid, AppPermissions.MANAGE_SERVER);
+            }
+
+            var newKey = StorageKeyGenerator.ServerIcon(serverGuid);
+            var oldKey = server.IconKey;
+
+            await _storage.UploadAsync(newKey, fileStream, contentType, ct);
+
+            if (!string.IsNullOrEmpty(oldKey) && oldKey != newKey)
+            {
+                try { await _storage.DeleteAsync(oldKey, ct); } catch { /* best effort */ }
+            }
+
+            server.IconKey = newKey;
+            await _db.SaveChangesAsync(ct);
+
+            return newKey;
+        }
+
         private ServerResponseDto MapServer(Servers s)
         {
             return new ServerResponseDto
@@ -184,7 +255,7 @@ namespace backend.Services.Server
                 ServerGuid = s.ServerGuid,
                 ServerName = s.ServerName,
                 OwnerGuid = s.OwnerGuid,
-                IconUrl = s.IconURL,
+                IconKey = s.IconKey,
                 
             };
         }

@@ -6,6 +6,7 @@ using backend.Context;
 using backend.Helper;
 using backend.Hubs;
 using backend.Interfaces;
+using backend.Middleware;
 using backend.Seeders;
 using backend.Services;
 using backend.Services.Server;
@@ -14,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Pgvector;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,7 +28,7 @@ builder.Services.AddDbContext<VoxlockDbContext>(options =>
         $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
         $"Password={Environment.GetEnvironmentVariable("DB_PASS")};";
 
-    options.UseNpgsql(connectionString);
+    options.UseNpgsql(connectionString, o => o.UseVector());
 
     options.ConfigureWarnings(w =>
             w.Ignore(RelationalEventId.PendingModelChangesWarning)
@@ -48,7 +50,7 @@ builder.Services.AddAuthentication(options =>
             var path = context.HttpContext.Request.Path;
 
             if (!string.IsNullOrEmpty(accessToken) &&
-                (path.StartsWithSegments("/hubs/chat")))
+                (path.StartsWithSegments("/hubs")))
             {
                 context.Token = accessToken;
             }
@@ -67,7 +69,7 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("JWT_SECRET_KEY")!))
     };
 });
-// Add services to the container.
+
 builder.Services.AddSignalR();
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
@@ -80,14 +82,17 @@ builder.Services.AddScoped<IServerRolesService, ServerRolesService>();
 builder.Services.AddScoped<IServerService, ServerService>();
 builder.Services.AddScoped<IChannelService, ChannelService>();
 builder.Services.AddScoped<IServerMemberService, ServerMembersService>();
-builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IPermissionEvualuator, PermissionEvaluator>();
 builder.Services.AddScoped<IServerHelper, ServerHelper>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-
-
+builder.Services.AddScoped<IVoiceService, VoiceService>();
+builder.Services.AddScoped<IS3StorageService, S3StorageService>();
+builder.Services.AddScoped<IFriendService, FriendService>();
+builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
+builder.Services.AddScoped<IEncryptionService,EncryptionService>();
+builder.Services.AddHttpClient();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -100,11 +105,11 @@ builder.Services.AddCors(options =>
 });
 
 
-// Redis Cache Service
+
 builder.Services.AddSingleton<IConnectionMultiplexer>(
     ConnectionMultiplexer.Connect("redis:6379")
     );
-// Garage S3 Service
+
 builder.Services.AddSingleton<IAmazonS3>(options =>
 {
 
@@ -115,7 +120,9 @@ builder.Services.AddSingleton<IAmazonS3>(options =>
         {
             ServiceURL = Environment.GetEnvironmentVariable("S3_ENDPOINT"),
             ForcePathStyle = true,
-            AuthenticationRegion = "garage"
+            AuthenticationRegion = "garage",
+            UseHttp = true,
+           
         }
     );
 });
@@ -137,14 +144,15 @@ app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "Voxlock API v1");
 });
-
+app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseCors("AllowFrontend");
 app.MapHub<ChatHub>("/hubs/chat");
+app.MapHub<VideoVoiceHub>("/hubs/media");
 app.MapControllers();
-// Run Migration 
+
 
 using (var scope = app.Services.CreateScope())
 {

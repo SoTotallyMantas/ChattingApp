@@ -1,18 +1,90 @@
-import { useRef, useState, useLayoutEffect } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useRef, useState } from "react";
 import { useMessages } from "../../context/MessagesContext";
 import { useAppState } from "../../context/AppStateContext";
 import { flattenMessages } from "../../utils/flattenMessages";
 import MessageBubble from "./MessageBubble";
+import { SkeletonMessage } from "./SkeletonMessage";
+import { getAvatarSrc } from "../../utils/avatar";
+import { useOverlay } from "../../context/OverlayContext";
+import UserActionsMenu from "../users/UserActionsMenu";
 
-export default function MessageList() {
+const WINDOW_SIZE = 300;
+
+export default function MessageList({ searchNavigating = false }) {
     const { selectedChannel } = useAppState();
     const { messages, loadOlderMessages, hasMore } = useMessages();
+    const { openOverlay, closeOverlay } = useOverlay();
 
     const scrollRef = useRef(null);
-    const isLoadingRef = useRef(false);
+    const loadingRef = useRef(false);
+    const stickBottomRef = useRef(true);
+
+    const [visibleRows, setVisibleRows] = useState([]);
+    const [topIndex, setTopIndex] = useState(0);
     const [showJump, setShowJump] = useState(false);
-    const stickToBottomRef = useRef(true);
+
+    useEffect(() => {
+        const flat = flattenMessages(messages);
+        const total = flat.length;
+
+        if (total <= WINDOW_SIZE) {
+            setTopIndex(0);
+            setVisibleRows(flat);
+            return;
+        }
+
+        const start = topIndex;
+        const end = Math.min(total, start + WINDOW_SIZE);
+
+        setVisibleRows(flat.slice(start, end));
+    }, [messages, topIndex]);
+
+    const scrollToBottom = (smooth = false) => {
+        const el = scrollRef.current;
+        if (!el) return;
+
+        if (smooth && el.scrollTo) {
+            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        } else {
+            el.scrollTop = el.scrollHeight;
+        }
+    };
+
+    useEffect(() => {
+        if (stickBottomRef.current) scrollToBottom(false);
+    }, [visibleRows]);
+
+    const loadHistory = async () => {
+        const el = scrollRef.current;
+        if (!el || loadingRef.current || !hasMore) return;
+
+        loadingRef.current = true;
+
+        const oldScroll = el.scrollTop;
+        const oldHeight = el.scrollHeight;
+
+        await loadOlderMessages();
+
+        requestAnimationFrame(() => {
+            const newHeight = el.scrollHeight;
+            el.scrollTop = oldScroll + (newHeight - oldHeight);
+            loadingRef.current = false;
+        });
+    };
+
+    const onScroll = () => {
+        const el = scrollRef.current;
+        if (!el) return;
+
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        stickBottomRef.current = dist <= 2;
+
+        setShowJump(dist > 200);
+
+        if (el.scrollTop < 120 && topIndex === 0 && hasMore) {
+            loadHistory();
+        }
+    };
 
     if (!selectedChannel) {
         return (
@@ -23,7 +95,7 @@ export default function MessageList() {
                     display: "flex",
                     justifyContent: "center",
                     alignItems: "center",
-                    color: "var(--text-secondary)",
+                    color: "var(--text-secondary)"
                 }}
             >
                 Select a channel to start chatting.
@@ -31,192 +103,208 @@ export default function MessageList() {
         );
     }
 
-    const rows = flattenMessages(messages);
-
-    const virtualizer = useVirtualizer({
-        count: rows.length,
-        getScrollElement: () => scrollRef.current,
-        estimateSize: () => 56,
-        overscan: 12,
-    });
-
-    const items = virtualizer.getVirtualItems();
-
-    const scrollToBottom = () => {
-        const el = scrollRef.current;
-        if (!el) return;
-        el.scrollTop = el.scrollHeight;
-    };
-
-    const loadHistory = async () => {
-        if (!hasMore || isLoadingRef.current) return;
-        const el = scrollRef.current;
-        if (!el) return;
-
-        isLoadingRef.current = true;
-
-        const prevScrollHeight = el.scrollHeight;
-        const prevScrollTop = el.scrollTop;
-
-        await loadOlderMessages();
-
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const newScrollHeight = el.scrollHeight;
-                const delta = newScrollHeight - prevScrollHeight;
-                el.scrollTop = prevScrollTop + delta;
-                isLoadingRef.current = false;
-            });
-        });
-    };
-
-    const onScroll = () => {
-        const el = scrollRef.current;
-        if (!el) return;
-
-        const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-        stickToBottomRef.current = distFromBottom < 2;
-        setShowJump(distFromBottom > 200);
-
-        if (el.scrollTop <= 150) {
-            loadHistory();
-        }
-    };
-
-    useLayoutEffect(() => {
-        if (!rows.length) return;
-        if (!stickToBottomRef.current) return;
-        requestAnimationFrame(scrollToBottom);
-    }, [rows.length, selectedChannel]);
-
     return (
-        <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
-            <div
-                ref={scrollRef}
-                onScroll={onScroll}
-                style={{
-                    position: "absolute",
-                    inset: 0,
-                    overflowY: "auto",
-                    overflowX: "hidden",
-                    padding: "20px 0 40px",
-                    background: "var(--bg-secondary)",
-                    wordBreak: "break-word",
-                }}
-            >
+        <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "20px 0 40px",
+                background: "var(--bg-secondary)",
+                position: "relative"
+            }}
+        >
+            {!hasMore && visibleRows.length > 0 && (
                 <div
                     style={{
-                        height: virtualizer.getTotalSize(),
-                        width: "100%",
-                        position: "relative",
+                        textAlign: "center",
+                        padding: "8px 0",
+                        color: "var(--text-secondary)",
+                        fontSize: 13,
+                        opacity: 0.9
                     }}
                 >
-                    {items.map((v) => {
-                        const row = rows[v.index];
+                    Beginning of history
+                </div>
+            )}
 
-                        return (
+            {visibleRows.map((row) => {
+                if (row.type === "day") {
+                    return (
+                        <div
+                            key={row.id}
+                            style={{
+                                textAlign: "center",
+                                margin: "14px 0",
+                                color: "var(--text-secondary)",
+                                fontSize: 14,
+                                opacity: 0.85,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10
+                            }}
+                        >
+                            <span style={{ flex: 1, height: 1, background: "var(--border-color)" }} />
+                            {row.date}
+                            <span style={{ flex: 1, height: 1, background: "var(--border-color)" }} />
+                        </div>
+                    );
+                }
+
+                if (row.type === "group-header") {
+                    const userSummary = {
+                        userGuid: row.userGuid,
+                        displayName: row.displayName,
+                        userName: row.userName,
+                        avatarKey: row.avatarKey
+                    };
+                    return (
+                        <div
+                            key={row.id}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                            onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                openOverlay("user-actions", {
+                                    component: (
+                                        <UserActionsMenu
+                                            user={userSummary}
+                                            x={rect.left + 10}
+                                            y={rect.bottom + 4}
+                                            onAction={() => closeOverlay()}
+                                            canKick={false}
+                                            canBan={false}
+                                        />
+                                    )
+                                });
+                            }}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                openOverlay("user-actions", {
+                                    component: (
+                                        <UserActionsMenu
+                                            user={userSummary}
+                                            x={e.clientX}
+                                            y={e.clientY}
+                                            onAction={() => closeOverlay()}
+                                            canKick={false}
+                                            canBan={false}
+                                        />
+                                    )
+                                });
+                            }}
+                            style={{
+                                display: "flex",
+                                gap: 12,
+                                padding: "6px 12px",
+                                marginTop: 6,
+                                minHeight: 50,
+                                borderRadius: 10,
+                                cursor: "pointer",
+                                transition: "background 120ms ease"
+                            }}
+                        >
                             <div
-                                key={row.id}
-                                data-index={v.index}
-                                ref={virtualizer.measureElement}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    openOverlay("user-actions", {
+                                        component: (
+                                            <UserActionsMenu
+                                                user={userSummary}
+                                                canKick={false}
+                                                canBan={false}
+                                                x={e.clientX}
+                                                y={e.clientY}
+                                                onAction={() => closeOverlay()}
+                                            />
+                                        )
+                                    });
+                                }}
                                 style={{
-                                    position: "absolute",
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    width: "100%",
-                                    transform: `translateY(${v.start}px)`,
-                                    boxSizing: "border-box",
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: "50%",
+                                    background: "var(--bg-tertiary)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontWeight: 700,
+                                    color: "var(--text-primary)",
+                                    overflow: "hidden"
                                 }}
                             >
-                                {row.type === "day" && (
-                                    <div
+                                {getAvatarSrc({ avatarKey: row.avatarKey, userGuid: row.userGuid }) ? (
+                                    <img
+                                        src={getAvatarSrc({ avatarKey: row.avatarKey, userGuid: row.userGuid })}
+                                        alt=""
                                         style={{
-                                            textAlign: "center",
-                                            margin: "12px 0",
-                                            color: "var(--text-secondary)",
-                                            fontSize: 14,
-                                            opacity: 0.8,
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 10,
+                                            width: "100%",
+                                            height: "100%",
+                                            objectFit: "cover"
                                         }}
-                                    >
-                                        <span
-                                            style={{
-                                                flex: 1,
-                                                height: 1,
-                                                background: "var(--border-color)",
-                                            }}
-                                        />
-                                        {row.date}
-                                        <span
-                                            style={{
-                                                flex: 1,
-                                                height: 1,
-                                                background: "var(--border-color)",
-                                            }}
-                                        />
-                                    </div>
-                                )}
-
-                                {row.type === "group-header" && (
-                                    <div
-                                        style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 12,
-                                            padding: "6px 12px",
-                                            height: 52,              
-                                            boxSizing: "border-box",
-                                        }}
-                                    >
-                                        <img
-                                            src={row.avatarUrl || "/default-avatar.png"}
-                                            style={{
-                                                width: 40,
-                                                height: 40,
-                                                borderRadius: "50%",
-                                                objectFit: "cover",
-                                                flexShrink: 0,
-                                            }}
-                                        />
-                                        <div
-                                            style={{
-                                                fontWeight: 600,
-                                                color: "var(--text-primary)",
-                                                whiteSpace: "nowrap",
-                                                overflow: "hidden",
-                                                textOverflow: "ellipsis",
-                                            }}
-                                        >
-                                            {row.displayName}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {row.type === "bubble" && (
-                                    <div
-                                        style={{
-                                            paddingLeft: 64,
-                                            paddingRight: 12,
-                                            minWidth: 0,
-                                        }}
-                                    >
-                                        <MessageBubble msg={row.message} />
-                                    </div>
+                                    />
+                                ) : (
+                                    (row.displayName || row.userName || "?").charAt(0).toUpperCase()
                                 )}
                             </div>
-                        );
-                    })}
+
+                            <div
+                                style={{
+                                    fontWeight: 600,
+                                    color: "var(--text-primary)",
+                                    marginTop: 2,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8
+                                }}
+                            >
+                                <span>{row.displayName}</span>
+                                {row.timestamp && (
+                                    <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                                        {new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                }
+
+                if (row.type === "bubble") {
+                    return (
+                        <div
+                            key={row.id}
+                            id={`msg-${row.message.messageGuid}`}
+                            style={{
+                                paddingLeft: 64,
+                                paddingRight: 32
+                            }}
+                        >
+                            <MessageBubble msg={row.message} />
+                        </div>
+                    );
+                }
+
+                return null;
+            })}
+
+            {searchNavigating && (
+                <div style={{ padding: "0 16px" }}>
+                    <SkeletonMessage />
+                    <SkeletonMessage />
+                    <SkeletonMessage />
                 </div>
-            </div>
+            )}
 
             {showJump && (
                 <div
-                    onClick={scrollToBottom}
+                    onClick={() => {
+                        stickBottomRef.current = true;
+                        scrollToBottom(true);
+                        setShowJump(false);
+                    }}
                     style={{
-                        position: "absolute",
+                        position: "fixed",
                         bottom: 80,
                         right: 30,
                         padding: "8px 12px",
@@ -227,7 +315,7 @@ export default function MessageList() {
                         zIndex: 9999,
                         boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
                         color: "var(--text-primary)",
-                        fontSize: 13,
+                        fontSize: 13
                     }}
                 >
                     Jump to Present

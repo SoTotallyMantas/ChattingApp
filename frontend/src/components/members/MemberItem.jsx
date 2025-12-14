@@ -1,77 +1,53 @@
-import { useState } from "react";
-import KickMemberModal from "./KickMemberModal";
-import BanMemberModal from "./BanMemberModal";
+import UserActionsMenu from "../users/UserActionsMenu";
+import { useOverlay } from "../../context/OverlayContext";
 
-export default function MemberItem({ member, onAction, onClick }) {
-    const [kickOpen, setKickOpen] = useState(false);
-    const [banOpen, setBanOpen] = useState(false);
+export default function MemberItem({ member, onAction, onClick, canKick = true, canBan = true }) {
+    const { openOverlay, closeOverlay } = useOverlay();
+    const baseBg = "var(--bg-tertiary)";
 
     return (
         <div
             onClick={onClick} 
+            onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openOverlay("user-actions", {
+                    component: (
+                        <UserActionsMenu
+                            user={member.user}
+                            canKick={canKick}
+                            canBan={canBan}
+                            onAction={() => {
+                                onAction?.();
+                                closeOverlay();
+                            }}
+                            x={e.clientX}
+                            y={e.clientY}
+                        />
+                    )
+                });
+            }}
             style={{
                 padding: 10,
                 marginBottom: 8,
-                background: "#2f3136",
+                background: baseBg,
                 borderRadius: 6,
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
                 cursor: "pointer",
+                color: "var(--text-primary)",
+                transition: "background 120ms ease"
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = baseBg)}
         >
             <div>
                 <strong>{member.userName}</strong>
-                <div style={{ fontSize: 12, color: "#aaa" }}>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                     {member.roles?.map((r) => r.roleName).join(", ")}
                 </div>
             </div>
-
-            <div
-                style={{ display: "flex", gap: 8 }}
-                onClick={(e) => e.stopPropagation()} 
-            >
-                <button style={btnAction} onClick={() => setKickOpen(true)}>
-                    Kick
-                </button>
-                <button style={btnDanger} onClick={() => setBanOpen(true)}>
-                    Ban
-                </button>
-            </div>
-
-            {kickOpen && (
-                <KickMemberModal
-                    member={member}
-                    onClose={() => setKickOpen(false)}
-                    onAction={onAction}
-                />
-            )}
-
-            {banOpen && (
-                <BanMemberModal
-                    member={member}
-                    onClose={() => setBanOpen(false)}
-                    onAction={onAction}
-                />
-            )}
         </div>
     );
 }
-
-const btnAction = {
-    padding: "6px 10px",
-    background: "#5865f2",
-    border: "none",
-    borderRadius: 4,
-    cursor: "pointer",
-    color: "white",
-};
-
-const btnDanger = {
-    padding: "6px 10px",
-    background: "#d83c3e",
-    border: "none",
-    borderRadius: 4,
-    cursor: "pointer",
-    color: "white",
-};

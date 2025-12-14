@@ -3,9 +3,14 @@ import { useAppState } from "../../context/AppStateContext";
 import serverApi from "../../api/servers";
 import { useToast } from "../../context/ToastContext";
 import { useServers } from "../../hooks/useServers";
+import { useOverlay } from "../../context/OverlayContext";
 
+import RolesPanel from "../roles/RolesPanel";
+import UsersPanel from "../members/UsersPanel";
 import InviteCreatePanel from "../invites/InviteCreatePanel";
 import InviteListPanel from "../invites/InviteListPanel";
+import { getServerIconSrc } from "../../utils/serverIcon";
+import BanList from "../members/BanList";
 
 export default function ServerSettingsSidebar() {
     const {
@@ -17,35 +22,56 @@ export default function ServerSettingsSidebar() {
     } = useAppState();
 
     const { loadServers } = useServers();
+    const { openOverlay } = useOverlay();
     const toast = useToast();
     const inviteListRef = useRef();
 
     if (!serverSettingsOpen || !selectedServer) return null;
 
-   
     const [tab, setTab] = useState("overview");
+    const permissions = selectedServer?.permissions || [];
+    const canBan = permissions.includes("BAN_MEMBERS");
 
-    
     const [serverName, setServerName] = useState(selectedServer.serverName);
-    const [iconUrl, setIconUrl] = useState(selectedServer.iconUrl || "");
+    const [iconKey, setIconKey] = useState(selectedServer.iconKey || "");
+    const [iconFile, setIconFile] = useState(null);
+    const [iconPreview, setIconPreview] = useState(null);
+    const iconSrc = getServerIconSrc({ serverGuid: selectedServer.serverGuid, iconKey });
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         setServerName(selectedServer.serverName);
-        setIconUrl(selectedServer.iconUrl || "");
+        setIconKey(selectedServer.iconKey || "");
+        setIconFile(null);
+        setIconPreview(null);
         setTab("overview");
     }, [selectedServer]);
 
-  
     const save = async () => {
         try {
-            await serverApi.updateServer(selectedServer.serverGuid, {
+            let nextIconKey = iconKey;
+
+            if (iconFile) {
+                const res = await serverApi.uploadServerIcon(selectedServer.serverGuid, iconFile);
+                const key = res.data?.iconKey;
+                if (key) {
+                    nextIconKey = key;
+                    setIconKey(key);
+                    setSelectedServer(prev => prev ? { ...prev, iconKey: key } : prev);
+                    setIconFile(null);
+                    setIconPreview(null);
+                }
+            }
+
+            const updated = await serverApi.updateServer(selectedServer.serverGuid, {
                 serverGuid: selectedServer.serverGuid,
                 serverName,
-                iconUrl: iconUrl || null,
+                iconKey: nextIconKey || null,
             });
 
             toast.show("success", "Server updated.");
             await loadServers();
+            setSelectedServer(updated.data ?? selectedServer);
         } catch {
             toast.show("error", "Failed to update server.");
         }
@@ -54,7 +80,6 @@ export default function ServerSettingsSidebar() {
     const deleteServer = async () => {
         try {
             await serverApi.deleteServer(selectedServer.serverGuid);
-
             toast.show("success", "Server deleted.");
 
             await loadServers();
@@ -71,7 +96,6 @@ export default function ServerSettingsSidebar() {
             await serverApi.leaveServer(selectedServer.serverGuid);
 
             toast.show("success", `Left ${selectedServer.serverName}`);
-
             setSelectedServer(null);
             setSelectedChannel(null);
             setServerSettingsOpen(false);
@@ -84,11 +108,12 @@ export default function ServerSettingsSidebar() {
 
     return (
         <div style={container}>
-          
             <div style={tabs}>
                 <Tab label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
                 <Tab label="Roles" active={tab === "roles"} onClick={() => setTab("roles")} />
+                <Tab label="Manage Users" active={tab === "manageUsers"} onClick={() => setTab("manageUsers")} />
                 <Tab label="Invites" active={tab === "invites"} onClick={() => setTab("invites")} />
+                {canBan && <Tab label="Bans" active={tab === "bans"} onClick={() => setTab("bans")} />}
                 <Tab label="Danger Zone" active={tab === "danger"} onClick={() => setTab("danger")} />
 
                 <div style={{ flex: 1 }} />
@@ -98,7 +123,6 @@ export default function ServerSettingsSidebar() {
                 </button>
             </div>
 
-           
             <div style={panel}>
                 {tab === "overview" && (
                     <>
@@ -111,24 +135,45 @@ export default function ServerSettingsSidebar() {
                             style={input}
                         />
 
-                        <label>Icon URL</label>
+                        <label>Icon</label>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: "50%", overflow: "hidden", background: "var(--bg-tertiary)" }}>
+                                {(iconPreview || iconSrc) ? (
+                                    <img src={iconPreview || iconSrc} alt="Server icon" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                ) : null}
+                            </div>
+                            <button
+                                style={primaryBtn}
+                                onClick={() => fileInputRef.current?.click()}
+                                type="button"
+                            >
+                                Upload Icon
+                            </button>
+                        </div>
                         <input
-                            value={iconUrl}
-                            onChange={(e) => setIconUrl(e.target.value)}
-                            style={input}
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setIconFile(file);
+                                const url = URL.createObjectURL(file);
+                                setIconPreview(url);
+                            }}
                         />
 
-                        <button style={primaryBtn} onClick={save}>
-                            Save Changes
-                        </button>
+                        <button style={primaryBtn} onClick={save}>Save Changes</button>
                     </>
                 )}
 
                 {tab === "roles" && (
-                    <div>
-                        <h2>Roles</h2>
-                        <p style={{ opacity: 0.7 }}>Roles UI not implemented yet.</p>
-                    </div>
+                    <RolesPanel serverId={selectedServer.serverGuid} />
+                )}
+
+                {tab === "manageUsers" && (
+                    <UsersPanel serverId={selectedServer.serverGuid} />
                 )}
 
                 {tab === "invites" && (
@@ -145,15 +190,42 @@ export default function ServerSettingsSidebar() {
                     </div>
                 )}
 
+                {tab === "bans" && (
+                    <BanList />
+                )}
+
                 {tab === "danger" && (
                     <>
                         <h2>Danger Zone</h2>
 
-                        <button style={dangerBtn} onClick={deleteServer}>
+                        <button
+                            style={dangerBtn}
+                            onClick={() =>
+                                openOverlay("confirm", {
+                                    title: "Delete Server",
+                                    message: `Delete "${selectedServer.serverName}"? This cannot be undone.`,
+                                    confirmLabel: "Yes, delete",
+                                    cancelLabel: "Cancel",
+                                    variant: "danger",
+                                    onConfirm: deleteServer
+                                })
+                            }
+                        >
                             Delete Server
                         </button>
-
-                        <button style={warnBtn} onClick={leaveServer}>
+                        <button
+                            style={warnBtn}
+                            onClick={() =>
+                                openOverlay("confirm", {
+                                    title: "Leave Server",
+                                    message: `Leave "${selectedServer.serverName}"?`,
+                                    confirmLabel: "Yes, leave",
+                                    cancelLabel: "Stay",
+                                    variant: "danger",
+                                    onConfirm: leaveServer
+                                })
+                            }
+                        >
                             Leave Server
                         </button>
                     </>
@@ -163,7 +235,6 @@ export default function ServerSettingsSidebar() {
     );
 }
 
-
 function Tab({ label, active, onClick }) {
     return (
         <div
@@ -171,8 +242,8 @@ function Tab({ label, active, onClick }) {
             style={{
                 padding: "12px 16px",
                 cursor: "pointer",
-                background: active ? "#3a3c43" : "transparent",
-                color: active ? "white" : "#b9bbbe",
+                background: active ? "var(--bg-tertiary)" : "transparent",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
                 borderRadius: 4,
                 marginBottom: 6,
                 fontWeight: active ? 600 : 400,
@@ -185,20 +256,22 @@ function Tab({ label, active, onClick }) {
 
 const container = {
     display: "flex",
-    width: 500,
-    height: "100%",
-    background: "#2f3136",
-    color: "white",
-    borderLeft: "1px solid #111",
+    width: "100%",
+    height: "95vh",
+    background: "var(--bg-secondary)",
+    color: "var(--text-primary)",
+    borderRadius: 12,
+    overflow: "hidden",
+    boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
 };
 
 const tabs = {
-    width: 150,
+    width: 170,
     padding: 15,
     display: "flex",
     flexDirection: "column",
-    borderRight: "1px solid #111",
-    background: "#202225",
+    borderRight: `1px solid var(--border-color)`,
+    background: "var(--bg-secondary)",
 };
 
 const panel = {
@@ -212,10 +285,10 @@ const input = {
     padding: 10,
     marginTop: 5,
     marginBottom: 20,
-    background: "#1e1f22",
-    border: "1px solid #333",
+    background: "var(--bg-tertiary)",
+    border: `1px solid var(--border-color)`,
     borderRadius: 5,
-    color: "white",
+    color: "var(--text-primary)",
 };
 
 const primaryBtn = {
@@ -224,7 +297,7 @@ const primaryBtn = {
     borderRadius: 5,
     border: "none",
     cursor: "pointer",
-    background: "#5865f2",
+    background: "var(--accent)",
     color: "white",
     marginTop: 10,
 };
@@ -232,7 +305,7 @@ const primaryBtn = {
 const dangerBtn = {
     width: "100%",
     padding: 12,
-    background: "#ed4245",
+    background: "var(--danger)",
     borderRadius: 5,
     border: "none",
     cursor: "pointer",

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "../../common/Modal";
 import Button from "../../common/Button";
 import { useToast } from "../../context/ToastContext";
@@ -10,8 +10,21 @@ export default function CreateRoleModal({ serverId, onClose, onCreated }) {
     const [name, setName] = useState("");
     const [color, setColor] = useState("#5865f2");
     const [permissions, setPermissions] = useState([]);
+    const [allPermissions, setAllPermissions] = useState([]);
 
     const toast = useToast();
+
+    useEffect(() => {
+        const loadPerms = async () => {
+            try {
+                const res = await RolesApi.getAllPermissions();
+                setAllPermissions(res.data);
+            } catch {
+                toast.show("error", "Failed to load permissions.");
+            }
+        };
+        loadPerms();
+    }, [toast]);
 
     const create = async (e) => {
         e.preventDefault();
@@ -53,14 +66,15 @@ export default function CreateRoleModal({ serverId, onClose, onCreated }) {
                 <input
                     type="color"
                     value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    style={{ ...input, padding: 4, height: 40 }}
-                />
+                onChange={(e) => setColor(e.target.value)}
+                style={{ ...input, padding: 4, height: 40 }}
+            />
 
-                <PermissionSelector
-                    selected={permissions}
-                    onChange={setPermissions}
-                />
+            <PermissionSelector
+                permissions={allPermissions}
+                selected={permissions}
+                onChange={setPermissions}
+            />
 
                 <div style={actions}>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>

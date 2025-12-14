@@ -84,6 +84,28 @@ namespace backend.Services.Server
                 };
 
                 _db.ServerMembers.Add(membership);
+
+                var defaultRoleGuid = await _db.ServerRoles
+                    .Where(r => r.ServerGuid == invite.ServerGuid && r.IsDefault)
+                    .Select(r => r.RoleGuid)
+                    .FirstOrDefaultAsync();
+                if (defaultRoleGuid != Guid.Empty)
+                {
+                    bool alreadyHasDefault = await _db.ServerUserRoles.AnyAsync(ur =>
+                        ur.ServerGuid == invite.ServerGuid &&
+                        ur.UserGuid == userGuid &&
+                        ur.RoleGuid == defaultRoleGuid);
+                    if (!alreadyHasDefault)
+                    {
+                        _db.ServerUserRoles.Add(new ServerUserRoles
+                        {
+                            ServerGuid = invite.ServerGuid,
+                            UserGuid = userGuid,
+                            RoleGuid = defaultRoleGuid,
+                            AddedAt = DateTime.UtcNow
+                        });
+                    }
+                }
             }
 
             
@@ -96,12 +118,20 @@ namespace backend.Services.Server
         {
             Guid userGuid = user.GetUserGuid();
 
-           
             await _perm.RequirePermissionAsync(serverGuid, userGuid, AppPermissions.CREATE_INVITES);
 
             var invites = await _db.ServerInvites
                 .Where(i => i.ServerGuid == serverGuid)
                 .ToListAsync();
+
+            var now = DateTime.UtcNow;
+            var expired = invites.Where(i => i.ExpiresAt < now || i.Uses >= i.MaxUses).ToList();
+            if (expired.Count > 0)
+            {
+                _db.ServerInvites.RemoveRange(expired);
+                await _db.SaveChangesAsync();
+                invites = invites.Except(expired).ToList();
+            }
 
             return invites.Select(MapInvite).ToList();
         }

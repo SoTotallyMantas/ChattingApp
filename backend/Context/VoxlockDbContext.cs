@@ -1,5 +1,7 @@
 ﻿using backend.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Options;
 
 namespace backend.Context
 
@@ -15,7 +17,6 @@ namespace backend.Context
         public DbSet<VoiceChannels> VoiceChannels => Set<VoiceChannels>();
         public DbSet<ServerRoles> ServerRoles => Set<ServerRoles>();
         public DbSet<MessageAttachments> Attachments => Set<MessageAttachments>();
-        public DbSet<ServerAuditLog> AuditLog => Set<ServerAuditLog>();
         public DbSet<Messages> Messages => Set<Messages>();
         public DbSet<ServerRolePermissions> ServerRolePermissions => Set<ServerRolePermissions>();
         public DbSet<Permissions> Permissions => Set<Permissions>();
@@ -24,11 +25,55 @@ namespace backend.Context
         public DbSet<ServerBans> ServerBans => Set<ServerBans>();
         public DbSet<RegistrationWhitelist> RegistrationWhitelist => Set<RegistrationWhitelist>();
         public DbSet<UserTokens> RefreshTokens => Set<UserTokens>();
+        public DbSet<ChannelEncryptionKey> ChannelEncryptionKeys => Set<ChannelEncryptionKey>();
+        public DbSet<Friendships> Friendships => Set<Friendships>();
+        public DbSet<MessageEmbedding> MessageEmbeddings => Set<MessageEmbedding>();
 
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            if (!optionsBuilder.IsConfigured)
+            {
+                var connectionString =
+                    $"Host={Environment.GetEnvironmentVariable("DB_HOST")};" +
+                    $"Port={Environment.GetEnvironmentVariable("DB_PORT")};" +
+                    $"Database={Environment.GetEnvironmentVariable("DB_NAME")};" +
+                    $"Username={Environment.GetEnvironmentVariable("DB_USER")};" +
+                    $"Password={Environment.GetEnvironmentVariable("DB_PASS")};";
+
+                optionsBuilder.UseNpgsql(connectionString, o => o.UseVector());
+            }
+        }
+      
 
         protected override void OnModelCreating(ModelBuilder model)
         {
             base.OnModelCreating(model);
+            model.HasPostgresExtension("vector");
+            
+            model.Entity<MessageEmbedding>()
+                .HasKey(s => s.EmbeddingGuid);
+            model.Entity<MessageEmbedding>()
+                .HasOne<Messages>()               
+                .WithMany()                        
+                .HasForeignKey(e => e.MessageGuid)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            model.Entity<MessageEmbedding>()
+                .HasIndex(e => e.Embedding)
+                .HasMethod("ivfflat")
+                .HasOperators("vector_cosine_ops");
+
+            model.Entity<ChannelEncryptionKey>()
+                .HasKey(x => x.ChannelEncryptionKeyGUID);
+            model.Entity<ChannelEncryptionKey>()
+                .HasIndex(x => x.ChannelGuid)
+                .IsUnique();
+
+            model.Entity<ChannelEncryptionKey>()
+                .HasOne(x => x.Channel)
+                .WithOne(c => c.EncryptionKey)
+                .HasForeignKey<ChannelEncryptionKey>(x => x.ChannelGuid)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Users <-> UserSettings 1:1 
             model.Entity<UserSettings>()
@@ -235,20 +280,6 @@ namespace backend.Context
                 .WithMany()
                 .HasForeignKey(vs => vs.ChannelGuid);
 
-            // Audit Log 
-            model.Entity<ServerAuditLog>()
-                .HasKey(a => a.AuditGuid);
-
-            model.Entity<ServerAuditLog>()
-                .HasOne(al => al.Server)
-                .WithMany()
-                .HasForeignKey(al => al.ServerGuid);
-                
-            model.Entity<ServerAuditLog>()
-                .HasOne(a => a.PerformedByUser)
-                .WithMany()
-                .HasForeignKey(a => a.PerformedBy)
-                .OnDelete(DeleteBehavior.Restrict);
             // RegistrationWhitelist 
             model.Entity<RegistrationWhitelist>()
                 .HasKey(w => w.WhitelistGuid);
@@ -268,6 +299,24 @@ namespace backend.Context
                 .HasForeignKey(rt => rt.UserGuid)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            model.Entity<Friendships>()
+                .HasKey(f => f.FriendshipGuid);
+
+            model.Entity<Friendships>()
+                .HasIndex(f => new { f.RequesterGuid, f.AddresseeGuid })
+                .IsUnique();
+
+            model.Entity<Friendships>()
+                .HasOne(f => f.Requester)
+                .WithMany(u => u.SentFriendships)
+                .HasForeignKey(f => f.RequesterGuid)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            model.Entity<Friendships>()
+                .HasOne(f => f.Addressee)
+                .WithMany(u => u.ReceivedFriendships)
+                .HasForeignKey(f => f.AddresseeGuid)
+                .OnDelete(DeleteBehavior.Cascade);
 
 
 

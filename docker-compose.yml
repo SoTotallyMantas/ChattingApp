@@ -17,9 +17,10 @@ services:
       S3_BUCKET: ${S3_BUCKET}
       S3_KEY_ID: ${S3_KEY_ID}
       S3_KEY_SECRET: ${S3_KEY_SECRET}
-
+      ONNX_MODEL: ${ONNX_MODEL_PATH}
+      ONNX_VOCAB: ${ONNX_VOCAB_PATH}
       JWT_SECRET_KEY: ${JWT_SECRET}
-
+      ENCRYPTION_MASTER_KEY: ${DATA_ENCRYPTION_MASTER_KEY}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB}
@@ -34,6 +35,8 @@ services:
         condition: service_started
       janus:
         condition: service_started
+    volumes:
+      - ./models:/models:ro
     networks:
       - app-network
 
@@ -47,8 +50,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:80"
+      - "3443:443"    
     depends_on:
       - backend
+      - janus
     networks:
       - app-network
 
@@ -57,7 +62,10 @@ services:
   # =========================
   postgres:
     container_name: postgres
-    image: postgres:17
+    build:
+      context: .
+      dockerfile: postgres.Dockerfile
+    image: postgres-pgvector:17
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -195,4 +203,3 @@ volumes:
   garage_meta:
   garage_data:
   pgadmin_data:
-

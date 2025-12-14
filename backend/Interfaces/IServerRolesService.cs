@@ -14,5 +14,6 @@ namespace backend.Interfaces
         Task RemoveRoleFromUserAsync(Guid serverGuid, Guid roleGuid, RemoveRoleRequestDto dto, ClaimsPrincipal user);
         Task UpdateRolePermissionsAsync(Guid serverGuid, Guid roleGuid, UpdateRolePermissionsRequestDto dto, ClaimsPrincipal user);
         Task<ServerRoleResponseDto> UpdateRoleAsync(Guid serverGuid, EditRoleRequestDto dto, ClaimsPrincipal user);
+        Task ReorderRolesAsync(Guid serverGuid, ReorderRolesRequestDto dto, ClaimsPrincipal user);
     }
 }

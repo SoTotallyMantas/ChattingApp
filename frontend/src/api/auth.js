@@ -27,3 +27,7 @@ export const apiLogout = async () => {
   await api.post("/auth/logout");
   setAccessToken(null);
 };
+
+export const changePassword = async (currentPassword, newPassword) => {
+  await api.post("/auth/change-password", { currentPassword, newPassword });
+};

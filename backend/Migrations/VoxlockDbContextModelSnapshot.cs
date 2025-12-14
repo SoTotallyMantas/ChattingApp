@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Pgvector;
 using backend.Context;
 
 #nullable disable
@@ -20,7 +21,32 @@ namespace backend.Migrations
                 .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("backend.Models.ChannelEncryptionKey", b =>
+                {
+                    b.Property<Guid>("ChannelEncryptionKeyGUID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChannelGuid")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("EncryptedKey")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("ChannelEncryptionKeyGUID");
+
+                    b.HasIndex("ChannelGuid")
+                        .IsUnique();
+
+                    b.ToTable("ChannelEncryptionKeys");
+                });
 
             modelBuilder.Entity("backend.Models.Channels", b =>
                 {
@@ -54,13 +80,45 @@ namespace backend.Migrations
                     b.ToTable("Channels");
                 });
 
+            modelBuilder.Entity("backend.Models.Friendships", b =>
+                {
+                    b.Property<Guid>("FriendshipGuid")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AddresseeGuid")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RequesterGuid")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("FriendshipGuid");
+
+                    b.HasIndex("AddresseeGuid");
+
+                    b.HasIndex("RequesterGuid", "AddresseeGuid")
+                        .IsUnique();
+
+                    b.ToTable("Friendships");
+                });
+
             modelBuilder.Entity("backend.Models.MessageAttachments", b =>
                 {
                     b.Property<Guid>("AttachementGuid")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AttachementUrl")
+                    b.Property<string>("AttachementKey")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -85,6 +143,34 @@ namespace backend.Migrations
                     b.ToTable("Attachments");
                 });
 
+            modelBuilder.Entity("backend.Models.MessageEmbedding", b =>
+                {
+                    b.Property<Guid>("EmbeddingGuid")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChannelGuid")
+                        .HasColumnType("uuid");
+
+                    b.Property<Vector>("Embedding")
+                        .IsRequired()
+                        .HasColumnType("vector(384)");
+
+                    b.Property<Guid>("MessageGuid")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("EmbeddingGuid");
+
+                    b.HasIndex("Embedding");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Embedding"), "ivfflat");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Embedding"), new[] { "vector_cosine_ops" });
+
+                    b.HasIndex("MessageGuid");
+
+                    b.ToTable("MessageEmbeddings");
+                });
+
             modelBuilder.Entity("backend.Models.Messages", b =>
                 {
                     b.Property<Guid>("MessageGuid")
@@ -94,15 +180,15 @@ namespace backend.Migrations
                     b.Property<Guid>("ChannelGuid")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("EditedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("EncryptedContent")
+                        .IsRequired()
+                        .HasColumnType("bytea");
 
                     b.Property<Guid?>("ReplyToGuid")
                         .HasColumnType("uuid");
@@ -164,34 +250,6 @@ namespace backend.Migrations
                     b.HasIndex("AddedBy");
 
                     b.ToTable("RegistrationWhitelist");
-                });
-
-            modelBuilder.Entity("backend.Models.ServerAuditLog", b =>
-                {
-                    b.Property<Guid>("AuditGuid")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("PerformedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ServerGuid")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("AuditGuid");
-
-                    b.HasIndex("PerformedBy");
-
-                    b.HasIndex("ServerGuid");
-
-                    b.ToTable("AuditLog");
                 });
 
             modelBuilder.Entity("backend.Models.ServerBans", b =>
@@ -356,7 +414,7 @@ namespace backend.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("IconURL")
+                    b.Property<string>("IconKey")
                         .HasColumnType("text");
 
                     b.Property<Guid>("OwnerGuid")
@@ -435,7 +493,7 @@ namespace backend.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AvatarURL")
+                    b.Property<string>("AvatarKey")
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
@@ -527,6 +585,17 @@ namespace backend.Migrations
                     b.ToTable("VoiceStates");
                 });
 
+            modelBuilder.Entity("backend.Models.ChannelEncryptionKey", b =>
+                {
+                    b.HasOne("backend.Models.Channels", "Channel")
+                        .WithOne("EncryptionKey")
+                        .HasForeignKey("backend.Models.ChannelEncryptionKey", "ChannelGuid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+                });
+
             modelBuilder.Entity("backend.Models.Channels", b =>
                 {
                     b.HasOne("backend.Models.Channels", "Parent")
@@ -545,6 +614,25 @@ namespace backend.Migrations
                     b.Navigation("Servers");
                 });
 
+            modelBuilder.Entity("backend.Models.Friendships", b =>
+                {
+                    b.HasOne("backend.Models.Users", "Addressee")
+                        .WithMany("ReceivedFriendships")
+                        .HasForeignKey("AddresseeGuid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("backend.Models.Users", "Requester")
+                        .WithMany("SentFriendships")
+                        .HasForeignKey("RequesterGuid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Addressee");
+
+                    b.Navigation("Requester");
+                });
+
             modelBuilder.Entity("backend.Models.MessageAttachments", b =>
                 {
                     b.HasOne("backend.Models.Messages", "Messages")
@@ -554,6 +642,15 @@ namespace backend.Migrations
                         .IsRequired();
 
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("backend.Models.MessageEmbedding", b =>
+                {
+                    b.HasOne("backend.Models.Messages", null)
+                        .WithMany()
+                        .HasForeignKey("MessageGuid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("backend.Models.Messages", b =>
@@ -591,25 +688,6 @@ namespace backend.Migrations
                         .IsRequired();
 
                     b.Navigation("AddedByUser");
-                });
-
-            modelBuilder.Entity("backend.Models.ServerAuditLog", b =>
-                {
-                    b.HasOne("backend.Models.Users", "PerformedByUser")
-                        .WithMany()
-                        .HasForeignKey("PerformedBy")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("backend.Models.Servers", "Server")
-                        .WithMany()
-                        .HasForeignKey("ServerGuid")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PerformedByUser");
-
-                    b.Navigation("Server");
                 });
 
             modelBuilder.Entity("backend.Models.ServerBans", b =>
@@ -801,6 +879,9 @@ namespace backend.Migrations
                 {
                     b.Navigation("Children");
 
+                    b.Navigation("EncryptionKey")
+                        .IsRequired();
+
                     b.Navigation("Messages");
 
                     b.Navigation("VoiceChannels");
@@ -832,6 +913,10 @@ namespace backend.Migrations
                     b.Navigation("Messages");
 
                     b.Navigation("OwnedServers");
+
+                    b.Navigation("ReceivedFriendships");
+
+                    b.Navigation("SentFriendships");
 
                     b.Navigation("ServerMembers");
 

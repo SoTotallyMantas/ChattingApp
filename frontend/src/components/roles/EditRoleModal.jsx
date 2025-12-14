@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "../../common/Modal";
 import Button from "../../common/Button";
 import { useToast } from "../../context/ToastContext";
@@ -13,21 +13,35 @@ export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
     const [permissions, setPermissions] = useState(
         role.permissions.map(p => p.permissionGuid)
     );
+    const [allPermissions, setAllPermissions] = useState([]);
 
     const toast = useToast();
+
+    useEffect(() => {
+        const loadPerms = async () => {
+            try {
+                const res = await RolesApi.getAllPermissions();
+                setAllPermissions(res.data);
+            } catch {
+                toast.show("error", "Failed to load permissions.");
+            }
+        };
+        loadPerms();
+    }, [toast]);
 
     const save = async (e) => {
         e.preventDefault();
 
         try {
-            await RolesApi.updateRole(serverId, {
-                roleGuid: role.roleGuid,
+            const roleGuid = role.roleGuid || role.roleId || role.id;
+
+            await RolesApi.updateRole(serverId, roleGuid, {
                 roleName: name,
-                roleColor: color,
+                color,
                 position,
             });
 
-            await RolesApi.updateRolePermissions(serverId, role.roleGuid, {
+            await RolesApi.updateRolePermissions(serverId, roleGuid, {
                 roleId: role.roleGuid,
                 permissionsGuid: permissions,
             });
@@ -64,14 +78,15 @@ export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
                 <input
                     type="number"
                     value={position}
-                    onChange={(e) => setPosition(Number(e.target.value))}
-                    style={input}
-                />
+                onChange={(e) => setPosition(Number(e.target.value))}
+                style={input}
+            />
 
-                <PermissionSelector
-                    selected={permissions}
-                    onChange={setPermissions}
-                />
+            <PermissionSelector
+                permissions={allPermissions}
+                selected={permissions}
+                onChange={setPermissions}
+            />
 
                 <div style={actions}>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>

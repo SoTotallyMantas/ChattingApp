@@ -53,10 +53,11 @@ export default function InviteCreatePanel({ serverGuid, onCreated }) {
 }
 
 const box = {
-    background: "#202225",
+    background: "var(--bg-secondary)",
     padding: 15,
     borderRadius: 6,
     marginBottom: 20,
+    color: "var(--text-primary)"
 };
 
 const input = {
@@ -65,15 +66,15 @@ const input = {
     marginTop: 5,
     marginBottom: 15,
     borderRadius: 6,
-    border: "1px solid #333",
-    background: "#1e1f22",
-    color: "white",
+    border: `1px solid var(--border-color)`,
+    background: "var(--bg-tertiary)",
+    color: "var(--text-primary)",
 };
 
 const btn = {
     width: "100%",
     padding: 10,
-    background: "#5865f2",
+    background: "var(--accent)",
     border: "none",
     borderRadius: 6,
     cursor: "pointer",

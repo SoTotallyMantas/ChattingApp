@@ -3,6 +3,12 @@ import { useState, useEffect } from "react";
 import serverApi from "../api/servers";
 import { connectionState } from "../signalr/index";
 
+const reloadEvent = "servers:reload";
+
+export function signalServersReload() {
+    window.dispatchEvent(new Event(reloadEvent));
+}
+
 export function useServers() {
     const [servers, setServers] = useState([]);
     const [currentServer, setCurrentServer] = useState(null);
@@ -63,6 +69,9 @@ export function useServers() {
   
     useEffect(() => {
         loadServers();
+        const handler = () => loadServers();
+        window.addEventListener(reloadEvent, handler);
+        return () => window.removeEventListener(reloadEvent, handler);
     }, []);
 
     return {

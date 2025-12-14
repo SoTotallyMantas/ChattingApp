@@ -11,6 +11,7 @@ namespace backend.Interfaces
         Task RevokeRefreshToken(string refreshToken, Guid userGuid);
         Task<Users?> ValidateRefreshToken(string token);
         Task<AuthResponseDto> IssueTokens(Users user);
+        Task ChangePassword(Guid userGuid, string currentPassword, string newPassword);
 
     }
 }

@@ -4,7 +4,7 @@ import serverApi from "../../api/servers";
 import { useToast } from "../../context/ToastContext";
 
 export default function ServerContextMenu() {
-    const { overlay, closeOverlay } = useOverlay();
+    const { overlay, closeOverlay, openOverlay } = useOverlay();
     const {
         selectedServer,
         setSelectedServer,
@@ -12,7 +12,7 @@ export default function ServerContextMenu() {
     } = useAppState();
     const toast = useToast();
 
-    console.log("ServerContextMenu RENDER -> overlay =", overlay);
+   
 
     if (!overlay || overlay.type !== "server-menu") return null;
 
@@ -39,6 +39,17 @@ export default function ServerContextMenu() {
         }
     };
 
+    const confirmLeave = () => {
+        openOverlay("confirm", {
+            title: "Leave Server",
+            message: `Leave "${server.serverName}"?`,
+            confirmLabel: "Yes, leave",
+            cancelLabel: "Stay",
+            variant: "danger",
+            onConfirm: leaveServer
+        });
+    };
+
     return (
         <div
             data-overlay-root="true"
@@ -50,23 +61,42 @@ export default function ServerContextMenu() {
                 left: x,
                 background: "var(--bg-secondary)",
                 border: `1px solid var(--border-color)`,
-                borderRadius: 6,
-                padding: "6px 0",
-                width: 180,
-                zIndex: 99999
+                borderRadius: 10,
+                padding: 8,
+                width: 220,
+                zIndex: 99999,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
+                backdropFilter: "blur(8px)",
             }}
         >
-            <div className="menu-item" onClick={openSettings}>
-                Server Settings
-            </div>
+            <MenuItem onClick={openSettings} label="Server Settings" />
+            <MenuItem onClick={confirmLeave} label="Leave Server" danger />
+        </div>
+    );
+}
 
-            <div
-                className="menu-item"
-                style={{ color: "#faa61a" }}
-                onClick={leaveServer}
-            >
-                Leave Server
-            </div>
+function MenuItem({ label, onClick, danger }) {
+    return (
+        <div
+            onClick={onClick}
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: 8,
+                cursor: "pointer",
+                color: danger ? "var(--danger)" : "var(--text-primary)",
+                transition: "background 120ms ease, color 120ms ease",
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--bg-tertiary)";
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+            }}
+        >
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
         </div>
     );
 }

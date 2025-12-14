@@ -66,7 +66,7 @@ export function getConnection() {
         emit("Disconnected");
     });
 
-    connection.onreconnected(async () => {
+    connection.onreconnected = async () => {
         console.warn("[SignalR] Reconnected — restoring groups...");
 
         for (const s of connectionState.servers) {
@@ -87,7 +87,7 @@ export function getConnection() {
         }
 
         emit("Reconnected");
-    });
+    };
 
     connection.onclose(() => {
         emit("Disconnected");

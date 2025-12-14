@@ -24,9 +24,6 @@
         public const string KICK_MEMBERS = "KICK_MEMBERS";
         public const string BAN_MEMBERS = "BAN_MEMBERS";
 
-        // Audit
-        public const string VIEW_AUDIT_LOG = "VIEW_AUDIT_LOG";
-
         // Helper: list of all permissions
         public static readonly string[] All =
         {
@@ -43,9 +40,7 @@
             CREATE_INVITES,
 
             KICK_MEMBERS,
-            BAN_MEMBERS,
-
-            VIEW_AUDIT_LOG
+            BAN_MEMBERS
         };
     }
 }

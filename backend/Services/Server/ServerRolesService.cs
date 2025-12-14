@@ -81,8 +81,10 @@ namespace backend.Services.Server
                 throw new UnauthorizedAccessException("Role does not belong to this server.");
 
             if (role.IsDefault)
-                throw new InvalidOperationException("Default role cannot be edited.");
-
+            {
+                // Default role: only allow permission changes elsewhere; block rename/position/color edits
+                throw new InvalidOperationException("Default role cannot be renamed or reordered.");
+            }
 
             role.RoleName = dto.RoleName;
             role.Color = dto.RoleColor;
@@ -252,7 +254,7 @@ namespace backend.Services.Server
                         UserGuid = userEntity.UserGuid,
                         UserName = userEntity.UserName,
                         DisplayName = userEntity.DisplayName,
-                        AvatarUrl = userEntity.AvatarURL
+                        AvatarKey = userEntity.AvatarKey
                     },
 
                     Roles = userRoles.Select(r => new ServerRoleResponseDto
@@ -274,6 +276,25 @@ namespace backend.Services.Server
             }
 
             return result;
+        }
+        public async Task ReorderRolesAsync(Guid serverGuid, ReorderRolesRequestDto dto, ClaimsPrincipal user)
+        {
+            Guid userGuid = user.GetUserGuid();
+
+            await _perm.RequirePermissionAsync(serverGuid, userGuid, AppPermissions.MANAGE_ROLES);
+
+            var roles = await _db.ServerRoles
+                .Where(r => r.ServerGuid == serverGuid)
+                .ToListAsync();
+
+            foreach (var item in dto.Order)
+            {
+                var role = roles.FirstOrDefault(r => r.RoleGuid == item.RoleGuid);
+                if (role != null)
+                    role.Position = item.Position;
+            }
+
+            await _db.SaveChangesAsync();
         }
 
         private ServerRoleResponseDto MapRole(ServerRoles role)

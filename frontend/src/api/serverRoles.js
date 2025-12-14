@@ -1,28 +1,41 @@
 import api from "./axios";
 
-const RolesApi = {
-   
-    getRoles: (serverGuid) =>
-        api.get(`/servers/${serverGuid}/roles`),
+export default {
+    getRoles(serverId) {
+        return api.get(`/servers/${serverId}/roles`);
+    },
 
-    createRole: (serverGuid, data) =>
-        api.post(`/servers/${serverGuid}/roles`, data),
+    createRole(serverId, dto) {
+        return api.post(`/servers/${serverId}/roles`, dto);
+    },
 
-    deleteRole: (serverGuid, roleGuid) =>
-        api.delete(`/servers/${serverGuid}/roles/${roleGuid}`),
+    updateRole(serverId, roleGuid, dto) {
+        return api.put(`/servers/${serverId}/roles/${roleGuid}`, dto);
+    },
 
-    assignRoleToUser: (serverGuid, roleGuid, data) =>
-        api.post(`/servers/${serverGuid}/roles/${roleGuid}/assign`, data),
+    deleteRole(serverId, roleGuid) {
+        return api.delete(`/servers/${serverId}/roles/${roleGuid}`);
+    },
 
-    removeRoleFromUser: (serverGuid, roleGuid, data) =>
-        api.post(`/servers/${serverGuid}/roles/${roleGuid}/remove`, data),
+    updateRolePermissions(serverId, roleGuid, dto) {
+        return api.post(`/servers/${serverId}/roles/${roleGuid}/permissions`, dto);
+    },
 
-  
-    getMembersWithRole: (serverGuid, roleGuid) =>
-        api.get(`/servers/${serverGuid}/roles/${roleGuid}/members`),
+    assignRoleToUser(serverId, roleGuid, dto) {
+        return api.post(`/servers/${serverId}/roles/${roleGuid}/assign`, dto);
+    },
 
-    updateRolePermissions: (serverGuid, roleGuid, data) =>
-        api.post(`/servers/${serverGuid}/roles/${roleGuid}/permissions`, data),
+    removeRoleFromUser(serverId, roleGuid, dto) {
+        return api.post(`/servers/${serverId}/roles/${roleGuid}/remove`, dto);
+    },
+
+    getMembers(serverId, roleGuid) {
+        return api.get(`/servers/${serverId}/roles/${roleGuid}/members`);
+    },
+    reorderRoles(serverId, dto) {
+        return api.post(`/servers/${serverId}/roles/reorder`, dto);
+    },
+    getAllPermissions() {
+        return api.get(`/permissions`);
+    }
 };
-
-export default RolesApi;

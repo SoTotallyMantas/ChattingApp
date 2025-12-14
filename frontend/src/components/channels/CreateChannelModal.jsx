@@ -1,11 +1,12 @@
 import { useState } from "react";
-import Modal from "../../common/Modal";
-import Button from "../../common/Button";
 import { useToast } from "../../context/ToastContext";
+import { useOverlay } from "../../context/OverlayContext";
 
-export default function CreateChannelModal({ serverId, createChannel, onClose }) {
+export default function CreateChannelModal({ serverId, createChannel }) {
     const [name, setName] = useState("");
+    const [type, setType] = useState("text");
     const toast = useToast();
+    const { closeOverlay } = useOverlay();
 
     const create = async (e) => {
         e.preventDefault();
@@ -16,20 +17,29 @@ export default function CreateChannelModal({ serverId, createChannel, onClose })
             await createChannel({
                 serverGuid: serverId,
                 channelName: name,
-                channelType: "text",
+                channelType: type,
                 parentGuid: null,
                 position: 0
             });
 
             toast.show("success", "Channel created!");
-            onClose();
+            closeOverlay();
         } catch {
             toast.show("error", "Failed to create channel.");
         }
     };
 
     return (
-        <Modal onClose={onClose}>
+        <div
+            data-overlay-root="true"
+            style={{
+                background: "var(--bg-secondary)",
+                padding: 20,
+                borderRadius: 8,
+                width: 380,
+                color: "var(--text-primary)"
+            }}
+        >
             <h2>Create Channel</h2>
 
             <form onSubmit={create}>
@@ -41,14 +51,31 @@ export default function CreateChannelModal({ serverId, createChannel, onClose })
                     style={inputStyle}
                 />
 
+                <label>Channel Type</label>
+                <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    style={inputStyle}
+                >
+                    <option value="text">Text Channel</option>
+                    <option value="voice">Voice Channel</option>
+                </select>
+
                 <div style={actions}>
-                    <Button variant="secondary" onClick={onClose} type="button">
+                    <button
+                        type="button"
+                        onClick={closeOverlay}
+                        style={secondaryBtn}
+                    >
                         Cancel
-                    </Button>
-                    <Button type="submit">Create</Button>
+                    </button>
+
+                    <button type="submit" style={primaryBtn}>
+                        Create
+                    </button>
                 </div>
             </form>
-        </Modal>
+        </div>
     );
 }
 
@@ -67,4 +94,23 @@ const actions = {
     display: "flex",
     justifyContent: "flex-end",
     gap: 10
+};
+
+const primaryBtn = {
+    padding: "10px 16px",
+    background: "#5865f2",
+    borderRadius: 6,
+    border: "none",
+    cursor: "pointer",
+    color: "white",
+    fontWeight: 600
+};
+
+const secondaryBtn = {
+    padding: "10px 16px",
+    background: "#4f535c",
+    borderRadius: 6,
+    border: "none",
+    cursor: "pointer",
+    color: "white"
 };

@@ -3,6 +3,7 @@ using backend.DTO.AuthDtos;
 using backend.Interfaces;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -17,6 +18,36 @@ namespace backend.Services
         {
             _db = db;
             _tokenService = tokenService;
+        }
+
+        public async Task ChangePassword(Guid userGuid, string currentPassword, string newPassword)
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserGuid == userGuid);
+            if (user == null)
+            {
+                throw new UnauthorizedAccessException("User not found.");
+            }
+
+            if (!VerifyPassword(currentPassword, user.PasswordHash, user.PasswordSalt))
+            {
+                throw new UnauthorizedAccessException("Invalid current password.");
+            }
+
+            var (hash, salt) = HashPassword(newPassword);
+            user.PasswordHash = hash;
+            user.PasswordSalt = salt;
+
+            var tokens = await _db.RefreshTokens
+                .Where(t => t.UserGuid == userGuid && !t.IsRevoked)
+                .ToListAsync();
+
+            foreach (var token in tokens)
+            {
+                token.IsRevoked = true;
+                token.RevokedAt = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync();
         }
 
         public async Task<AuthResponseDto> Login(LoginRequestDto dto)
@@ -76,7 +107,7 @@ namespace backend.Services
                 Email = dto.Email,
                 PasswordHash = hash,
                 PasswordSalt = salt,
-                AvatarURL = null,
+                AvatarKey = null,
                 IsDeleted = false,
                 CreatedAt = DateTime.UtcNow,
                 Settings = new UserSettings
@@ -136,7 +167,7 @@ namespace backend.Services
             {
                 UserGuid = user.UserGuid,
                 DisplayName = user.DisplayName,
-                AvatarUrl = user.AvatarURL,
+                AvatarKey = user.AvatarKey,
                 Token = accessToken,
                 RefreshToken = refreshToken
             };

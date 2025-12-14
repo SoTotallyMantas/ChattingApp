@@ -12,11 +12,11 @@ namespace backend.Models
         public string PasswordSalt { get; set; } = default!;
         public DateTime CreatedAt { get; set; }
         public string? Status { get; set; }
-        public string? AvatarURL { get; set; }
+        public string? AvatarKey { get; set; }
         public bool IsDeleted { get; set; } = false;
         public DateTime? DeletedAt { get; set; }
         public UserSettings Settings { get; set; } = default!;
-        
+
         public ICollection<ServerMembers> ServerMembers { get; set; } = [];
 
         public ICollection<ServerUserRoles> ServerUserRoles { get; set; } = [];
@@ -24,6 +24,9 @@ namespace backend.Models
         public ICollection<Servers> OwnedServers { get; set; } = [];
 
         public ICollection<Messages> Messages { get; set; } = [];
+
+        public ICollection<Friendships> SentFriendships { get; set; } = [];
+        public ICollection<Friendships> ReceivedFriendships { get; set; } = [];
 
     }
 }

@@ -6,6 +6,7 @@ using backend.DTO.ServerDtos;
 using backend.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 
 namespace backend.Controllers.Server
 {
@@ -50,8 +51,16 @@ namespace backend.Controllers.Server
             return Ok(updatedServer);
         }
         
-      
-        
+        [HttpPost("{serverGuid}/icon")]
+        [RequestSizeLimit(7 * 1024 * 1024)]
+        public async Task<ActionResult> UploadIcon([FromRoute] Guid serverGuid, IFormFile file, CancellationToken ct)
+        {
+            if (file == null || file.Length == 0) return BadRequest("Empty file");
+
+            var key = await _serverService.UploadServerIconAsync(serverGuid, User, file.OpenReadStream(), file.ContentType ?? "application/octet-stream", ct);
+            return Ok(new { iconKey = key });
+        }
+
         [HttpPost("{serverGuid}/leave")]
         public async Task<ActionResult> LeaveServer([FromRoute] Guid serverGuid)
         {
@@ -59,6 +68,14 @@ namespace backend.Controllers.Server
             return NoContent();
         }
 
-        
+        [AllowAnonymous]
+        [HttpGet("{serverGuid}/icon")]
+        public async Task<ActionResult> GetServerIcon([FromRoute] Guid serverGuid, CancellationToken ct)
+        {
+            var result = await _serverService.GetServerIconAsync(serverGuid, ct);
+            if (result == null) return NotFound();
+            Response.Headers.CacheControl = "public,max-age=86400";
+            return File(result.Value.stream, result.Value.contentType ?? "application/octet-stream");
+        }
     }
 }

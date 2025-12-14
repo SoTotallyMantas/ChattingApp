@@ -65,3 +65,76 @@ body {
         transform: rotate(360deg);
     }
 }
+
+.role-modal-background {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55); 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999; 
+}
+
+
+.role-modal-content {
+    background: #202225;
+    padding: 20px;
+    border-radius: 8px;
+    color: white;
+    width: 400px;
+    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.5); 
+    position: relative;
+}
+
+.role-modal-input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    margin-bottom: 20px;
+    background: #1e1f22;
+    border: 1px solid #333;
+    border-radius: 5px;
+    color: white;
+}
+
+.role-modal-colorInput {
+    width: 50px;
+    height: 40px;
+    margin-bottom: 12px;
+    background: transparent;
+    border: none;
+}
+
+.role-modal-primaryBtn {
+    width: 100%;
+    padding: 12px;
+    background: #3ba55d;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.role-modal-button-group {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+
+.role-modal-button, .role-modal-createBtn, .role-modal-editBtn, .role-modal-deleteBtn {
+    padding: 10px;
+    background-color: #5865f2;
+    border: none;
+    color: white;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+    .role-modal-button:hover, .role-modal-createBtn:hover, .role-modal-editBtn:hover, .role-modal-deleteBtn:hover {
+        background-color: #4752c4;
+    }
+

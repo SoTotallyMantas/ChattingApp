@@ -1,10 +1,9 @@
-// hooks/useRoles.js
 import { useState, useEffect } from "react";
 import RolesApi from "../api/serverRoles";
 
 export function useRoles(serverId) {
     const [roles, setRoles] = useState([]);
-    const [roleMembers, setRoleMembers] = useState([]);
+    const [permissions, setPermissions] = useState([]);
 
     const loadRoles = async () => {
         if (!serverId) return;
@@ -12,50 +11,44 @@ export function useRoles(serverId) {
         setRoles(data);
     };
 
-    const loadMembers = async (roleGuid) => {
-        const { data } = await RolesApi.getMembersWithRole(serverId, roleGuid);
-        setRoleMembers(data);
+    const loadPermissions = async () => {
+        const { data } = await RolesApi.getAllPermissions();
+        setPermissions(data);
     };
 
-    const create = async (dto) => {
+    const createRole = async (dto) => {
         const { data } = await RolesApi.createRole(serverId, dto);
         await loadRoles();
         return data;
     };
 
-    const remove = async (roleGuid) => {
-        await RolesApi.deleteRole(serverId, roleGuid);
+    const updateRole = async (roleGuid, dto) => {
+        await RolesApi.updateRole(serverId, roleGuid, dto);
         await loadRoles();
     };
 
-    const assign = async (roleGuid, dto) => {
-        await RolesApi.assignRoleToUser(serverId, roleGuid, dto);
-        await loadMembers(roleGuid);
-    };
-
-    const unassign = async (roleGuid, dto) => {
-        await RolesApi.removeRoleFromUser(serverId, roleGuid, dto);
-        await loadMembers(roleGuid);
-    };
-
-    const updatePermissions = async (roleGuid, dto) => {
+    const updateRolePermissions = async (roleGuid, dto) => {
         await RolesApi.updateRolePermissions(serverId, roleGuid, dto);
+        await loadRoles();
+    };
+
+    const deleteRole = async (roleGuid) => {
+        await RolesApi.deleteRole(serverId, roleGuid);
         await loadRoles();
     };
 
     useEffect(() => {
         loadRoles();
+        loadPermissions();
     }, [serverId]);
 
     return {
         roles,
-        roleMembers,
+        permissions,
         loadRoles,
-        loadMembers,
-        createRole: create,
-        deleteRole: remove,
-        assignRole: assign,
-        removeRole: unassign,
-        updatePermissions
+        createRole,
+        updateRole,
+        updateRolePermissions,
+        deleteRole
     };
 }

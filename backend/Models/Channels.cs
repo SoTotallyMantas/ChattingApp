@@ -18,5 +18,7 @@
       
         public VoiceChannels? VoiceChannels { get; set; }
         public ICollection<Messages> Messages { get; set; } = [];
+
+        public ChannelEncryptionKey EncryptionKey { get; set; } = default!;
     }
 }

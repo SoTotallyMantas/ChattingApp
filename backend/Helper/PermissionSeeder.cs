@@ -17,9 +17,9 @@ namespace backend.Helper
 
             private static string GetCategory(string perm)
             {
-                if (perm.StartsWith("MANAGE_") && perm.Contains("ROLES"))
+                if (perm == AppPermissions.MANAGE_ROLES)
                     return "Roles";
-                if (perm.StartsWith("MANAGE_") && perm.Contains("CHANNELS"))
+                if (perm == AppPermissions.MANAGE_CHANNELS)
                     return "Channels";
                 if (perm == AppPermissions.SEND_MESSAGES || perm == AppPermissions.MANAGE_MESSAGES)
                     return "Messages";
@@ -27,11 +27,8 @@ namespace backend.Helper
                     return "Moderation";
                 if (perm == AppPermissions.CREATE_INVITES)
                     return "Invites";
-                if (perm == AppPermissions.VIEW_AUDIT_LOG)
-                    return "Audit";
                 return "General";
             }
         }
     }
 }
-

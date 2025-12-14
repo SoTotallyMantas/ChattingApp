@@ -1,12 +1,11 @@
-
 import { useState } from "react";
-import Modal from "../../common/Modal";
-import Button from "../../common/Button";
 import { useToast } from "../../context/ToastContext";
+import { useOverlay } from "../../context/OverlayContext";
 
-export default function EditChannelModal({ channel, updateChannel, onClose }) {
+export default function EditChannelModal({ channel, updateChannel }) {
     const [name, setName] = useState(channel.channelName);
     const toast = useToast();
+    const { closeOverlay } = useOverlay();
 
     const save = async (e) => {
         e.preventDefault();
@@ -21,14 +20,23 @@ export default function EditChannelModal({ channel, updateChannel, onClose }) {
             });
 
             toast.show("success", "Channel updated!");
-            onClose();
+            closeOverlay();
         } catch {
             toast.show("error", "Failed to update channel.");
         }
     };
 
     return (
-        <Modal onClose={onClose}>
+        <div
+            data-overlay-root="true"
+            style={{
+                width: 380,
+                background: "var(--bg-secondary)",
+                padding: 20,
+                borderRadius: 8,
+                color: "var(--text-primary)"
+            }}
+        >
             <h2>Edit Channel</h2>
 
             <form onSubmit={save}>
@@ -41,15 +49,23 @@ export default function EditChannelModal({ channel, updateChannel, onClose }) {
                 />
 
                 <div style={actions}>
-                    <Button variant="secondary" onClick={onClose}>
+                    <button
+                        type="button"
+                        onClick={closeOverlay}
+                        style={secondaryBtn}
+                    >
                         Cancel
-                    </Button>
-                    <Button type="submit">Save</Button>
+                    </button>
+
+                    <button type="submit" style={primaryBtn}>
+                        Save
+                    </button>
                 </div>
             </form>
-        </Modal>
+        </div>
     );
 }
+
 
 const inputStyle = {
     width: "100%",
@@ -66,4 +82,23 @@ const actions = {
     display: "flex",
     justifyContent: "flex-end",
     gap: 10
+};
+
+const primaryBtn = {
+    padding: "10px 16px",
+    background: "#5865f2",
+    borderRadius: 6,
+    border: "none",
+    cursor: "pointer",
+    color: "white",
+    fontWeight: 600
+};
+
+const secondaryBtn = {
+    padding: "10px 16px",
+    background: "#4f535c",
+    borderRadius: 6,
+    border: "none",
+    cursor: "pointer",
+    color: "white"
 };

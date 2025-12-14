@@ -1,8 +1,16 @@
+import React from "react";
 
 export default function Modal({ children, onClose }) {
+    const handleBackgroundClick = (e) => {
+        if (e.target === e.currentTarget) { 
+            onClose();
+        }
+    };
+
     return (
         <div
-            onClick={onClose}
+            data-overlay-root="true"
+            onClick={handleBackgroundClick}  
             style={{
                 position: "fixed",
                 top: 0,
@@ -17,7 +25,7 @@ export default function Modal({ children, onClose }) {
             }}
         >
             <div
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}  
                 style={{
                     background: "var(--modal-bg)",
                     padding: 20,

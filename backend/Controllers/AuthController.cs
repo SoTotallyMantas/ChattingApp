@@ -44,7 +44,7 @@ namespace backend.Controllers
         }
 
         [HttpPost("refresh")]
-        public async Task<ActionResult<AuthResponseDto>> Refresh([FromBody] RefreshTokenRequestDto dto)
+        public async Task<ActionResult<AuthResponseDto>> Refresh()
         {
             Guid userGuid = User.GetUserGuid();
             var cookie = Request.Cookies["refreshToken"];
@@ -74,7 +74,7 @@ namespace backend.Controllers
        
         [Authorize]
         [HttpPost("logout")]
-        public async Task<IActionResult> Logout([FromBody] RefreshTokenRequestDto dto)
+        public async Task<IActionResult> Logout()
         {
             Guid userGuid = User.GetUserGuid();
             var cookie = Request.Cookies["refreshToken"];
@@ -86,6 +86,18 @@ namespace backend.Controllers
             Response.Cookies.Delete("refreshToken");
 
             return Ok();
+        }
+
+        [Authorize]
+        [HttpPost("change-password")]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequestDto dto)
+        {
+            Guid userGuid = User.GetUserGuid();
+            await _auth.ChangePassword(userGuid, dto.CurrentPassword, dto.NewPassword);
+
+            Response.Cookies.Delete("refreshToken");
+
+            return Ok(new { message = "Password changed. Please log in again." });
         }
 
     }

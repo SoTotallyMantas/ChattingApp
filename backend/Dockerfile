@@ -28,7 +28,7 @@ RUN dotnet publish "./backend.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p
 FROM base AS final
 WORKDIR /app
 
-# Required for Npgsql / EF Core (SCRAM / GSSAPI)
+# Required for Npgsql / EF Core 
 RUN apt-get update \
     && apt-get install -y libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/*

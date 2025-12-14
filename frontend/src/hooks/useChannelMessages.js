@@ -1,6 +1,6 @@
 
-import { useEffect, useState, useRef } from "react";
-import { sendMessage, editMessage, deleteMessage, getHistory } from "../api/messages";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { sendMessage, editMessage, deleteMessage, getHistory, searchMessages } from "../api/messages";
 import {
     getConnection,
     onSignalREvent,
@@ -12,6 +12,11 @@ import {
 export function useChannelMessages(channelGuid) {
     const [messages, setMessages] = useState([]);
     const [hasMore, setHasMore] = useState(true);
+    const [searching, setSearching] = useState(false);
+    const initialLoadRef = useRef(false);
+    const [searchMode, setSearchMode] = useState(false);
+    const [searchResults, setSearchResults] = useState([]);
+    const [replyTo, setReplyTo] = useState(null);
 
     const channelRef = useRef(null);
     const conn = getConnection();
@@ -26,38 +31,44 @@ export function useChannelMessages(channelGuid) {
         const loadChannel = async () => {
             const previous = channelRef.current;
 
-           
             if (previous && previous !== channelGuid) {
                 try {
                     await conn.invoke("LeaveChannel", previous);
-                } catch {
-                    
-                }
+                } catch { }
             }
 
             channelRef.current = channelGuid;
             connectionState.channel = channelGuid;
 
-           
             try {
                 await conn.invoke("JoinChannel", channelGuid);
             } catch (e) {
                 console.error("JoinChannel failed:", e);
             }
 
-            try {
-                const { data } = await getHistory(channelGuid);
-                setMessages(data.reverse());
-                setHasMore(true);
-            } catch (e) {
-                console.error("History load failed:", e);
-            }
+            await loadLatest(channelGuid);
+            initialLoadRef.current = true;
         };
 
         loadChannel();
     }, [channelGuid]);
 
-  
+    const loadLatest = useCallback(async (cg = null) => {
+        const target = cg ?? channelRef.current;
+        if (!target) return;
+        try {
+            const { data } = await getHistory(target);
+            setMessages(data.reverse());
+            setHasMore(true);
+            setSearchMode(false);
+            setSearchResults([]);
+            setReplyTo(null);
+        } catch (e) {
+            console.error("History load failed:", e);
+        }
+    }, []);
+
+ 
     const loadOlderMessages = async () => {
         if (!hasMore) return;
         const oldest = messages[0];
@@ -76,7 +87,43 @@ export function useChannelMessages(channelGuid) {
         }
     };
 
- 
+    const search = useCallback(async (query) => {
+        if (!channelRef.current) return [];
+        const trimmed = (query || "").trim();
+        if (!trimmed) {
+            await loadLatest();
+            setSearching(false);
+            setSearchMode(false);
+            return [];
+        }
+        setSearching(true);
+        setSearchMode(true);
+        try {
+            const { data } = await searchMessages(channelRef.current, trimmed);
+            setSearchResults(data);
+            return data;
+        } catch (e) {
+            console.error("Search failed:", e);
+            return [];
+        } finally {
+            setSearching(false);
+        }
+    }, [loadLatest]);
+
+    const clearSearch = useCallback(async () => {
+        setSearchResults([]);
+        setSearchMode(false);
+        setReplyTo(null);
+    }, []);
+
+    const startReply = useCallback((message) => {
+        if (!message) return;
+        setReplyTo(message);
+    }, []);
+
+    const clearReply = useCallback(() => setReplyTo(null), []);
+
+
     useEffect(() => {
         const handleNew = (msg) => {
             if (msg.channelGuid === channelRef.current) {
@@ -114,6 +161,14 @@ export function useChannelMessages(channelGuid) {
         messages,
         hasMore,
         loadOlderMessages,
+        search,
+        searching,
+        searchMode,
+        searchResults,
+        clearSearch,
+        replyTo,
+        startReply,
+        clearReply,
         sendMessage,
         editMessage,
         deleteMessage,

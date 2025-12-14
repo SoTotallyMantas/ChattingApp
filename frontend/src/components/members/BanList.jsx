@@ -1,28 +1,37 @@
 
 import { useEffect, useState } from "react";
-import { getServerBans } from "../../api/serverMembers";
-import UnbanMemberModal from "./UnbanMemberModal";
+import { getServerBans, unbanMember } from "../../api/serverMembers";
 import { useAppState } from "../../context/AppStateContext";
+import { useOverlay } from "../../context/OverlayContext";
+import ConfirmModal from "../../common/ConfirmModal";
 
 export default function BanList() {
     const { selectedServer } = useAppState();
     const [bans, setBans] = useState([]);
-    const [unbanTarget, setUnbanTarget] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const { openOverlay, closeOverlay } = useOverlay();
 
     useEffect(() => {
         if (!selectedServer) return;
 
         async function load() {
+            setLoading(true);
             const data = await getServerBans(selectedServer.serverGuid);
-            setBans(data);
+            setBans(data || []);
+            setLoading(false);
         }
 
         load();
     }, [selectedServer]);
 
     return (
-        <div style={{ padding: 20, color: "white" }}>
-            <h2>Banned Users</h2>
+        <div style={{ padding: 4 }}>
+            <h2 style={{ marginBottom: 12 }}>Banned Users</h2>
+
+            {loading && <div style={{ color: "var(--text-secondary)" }}>Loading...</div>}
+            {!loading && bans.length === 0 && (
+                <div style={{ color: "var(--text-secondary)" }}>No bans.</div>
+            )}
 
             {bans.map((b) => (
                 <div
@@ -30,28 +39,45 @@ export default function BanList() {
                     style={{
                         padding: 10,
                         marginBottom: 8,
-                        background: "#2f3136",
+                        background: "var(--bg-tertiary)",
                         borderRadius: 6,
                         display: "flex",
                         justifyContent: "space-between",
+                        alignItems: "center",
+                        border: `1px solid var(--border-color)`
                     }}
                 >
-                    <span>{b.userName}</span>
-                    <button style={btnConfirm} onClick={() => setUnbanTarget(b)}>
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span style={{ color: "var(--text-primary)" }}>{b.displayName || b.userName}</span>
+                        <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>{b.userName}</span>
+                    </div>
+                    <button
+                        style={btnConfirm}
+                        onClick={() => {
+                            if (!selectedServer) return;
+                            openOverlay("confirm", {
+                                component: (
+                                    <ConfirmModal
+                                        title="Unban user"
+                                        message={`Unban ${b.displayName || b.userName}?`}
+                                        confirmLabel="Unban"
+                                        onConfirm={async () => {
+                                            await unbanMember(selectedServer.serverGuid, { userGuid: b.userGuid });
+                                            const fresh = await getServerBans(selectedServer.serverGuid);
+                                            setBans(fresh || []);
+                                            closeOverlay();
+                                        }}
+                                        cancelLabel="Cancel"
+                                        variant="danger"
+                                    />
+                                )
+                            });
+                        }}
+                    >
                         Unban
                     </button>
                 </div>
             ))}
-
-            {unbanTarget && (
-                <UnbanMemberModal
-                    ban={unbanTarget}
-                    onClose={() => setUnbanTarget(null)}
-                    onAction={() => {
-                        getServerBans(selectedServer.serverGuid).then(setBans);
-                    }}
-                />
-            )}
         </div>
     );
 }

@@ -4,41 +4,45 @@ export function flattenMessages(messages) {
     const rows = [];
     let currentDay = null;
     let lastUser = null;
+    let lastMessageTime = null;
 
-    messages.forEach((msg, i) => {
-        const dateLabel = formatMessageDate(msg.createdAt);
+    messages.forEach((msg) => {
+        const date = formatMessageDate(msg.createdAt);
+        const timeLabel = new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-        if (currentDay !== dateLabel) {
+        if (date !== currentDay) {
             rows.push({
                 type: "day",
-                id: "day-" + dateLabel,
-                date: dateLabel
+                id: "day-" + date,
+                date
             });
-            currentDay = dateLabel;
+            currentDay = date;
             lastUser = null;
+            lastMessageTime = null;
         }
 
-        const prev = messages[i - 1];
-        const sameUser = prev && prev.userGuid === msg.userGuid;
-        const sameDay = prev && formatMessageDate(prev.createdAt) === dateLabel;
-
-        if (!sameUser || !sameDay) {
+        if (msg.userGuid !== lastUser) {
             rows.push({
                 type: "group-header",
-                id: "group-" + msg.userGuid + "-" + dateLabel,
+                id: "group-" + msg.messageGuid,
+                displayName: msg.displayName || msg.userName,
+                userName: msg.userName,
+                avatarUrl: msg.avatarKey || msg.avatarUrl || null,
+                avatarKey: msg.avatarKey || null,
                 userGuid: msg.userGuid,
-                avatarUrl: msg.avatarUrl,
-                displayName: msg.displayName || msg.userName
+                timestamp: msg.createdAt,
+                timeLabel
             });
+            lastUser = msg.userGuid;
+            lastMessageTime = msg.createdAt;
         }
 
         rows.push({
             type: "bubble",
-            id: "bubble-" + msg.messageGuid,
-            message: msg
+            id: msg.messageGuid,
+            message: { ...msg, timeLabel }
         });
-
-        lastUser = msg.userGuid;
+        lastMessageTime = msg.createdAt;
     });
 
     return rows;

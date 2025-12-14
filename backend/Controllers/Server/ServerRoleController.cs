@@ -67,5 +67,11 @@ namespace backend.Controllers.Server
             await _serverRolesService.UpdateRoleAsync(serverGuid, dto, User);
             return NoContent();
         }
+        [HttpPost("reorder")]
+        public async Task<IActionResult> ReorderRoles(Guid serverGuid, [FromBody] ReorderRolesRequestDto dto)
+        {
+            await _serverRolesService.ReorderRolesAsync(serverGuid, dto, User);
+            return NoContent();
+        }
     }
 }

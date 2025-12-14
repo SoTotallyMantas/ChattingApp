@@ -12,49 +12,78 @@ export default function Login() {
     });
 
     const [error, setError] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
+        if (submitting) return;
+        setSubmitting(true);
 
         try {
             await login(form.emailOrUsername, form.password);
-            navigate("/"); 
+            navigate("/");
         } catch (err) {
-            setError(err.response?.data || "Login failed");
+            const status = err?.response?.status;
+            const msg =
+                (status === 403 || status === 401)
+                    ? "Wrong username/email or password"
+                    : err?.response?.data?.message ||
+                      err?.response?.data ||
+                      err?.message ||
+                      "Login failed";
+            setError(typeof msg === "string" ? msg : "Login failed");
         }
+        setSubmitting(false);
     };
 
     return (
-        <div className="auth-page">
-            <h1>Login</h1>
+        <div className="auth-shell">
+            <div className="auth-card">
+                <div className="auth-header">
+                    <div className="auth-brand">Voxlock</div>
+                    <div className="auth-title">Welcome back</div>
+                    <div className="auth-subtitle">Sign in to keep the conversation going.</div>
+                </div>
 
-            {error && <div className="error">{error}</div>}
+                {error && <div className="auth-error">{error}</div>}
 
-            <form onSubmit={handleSubmit}>
-                <input
-                    type="text"
-                    placeholder="Email or Username"
-                    value={form.emailOrUsername}
-                    onChange={(e) =>
-                        setForm({ ...form, emailOrUsername: e.target.value })
-                    }
-                />
+                <form className="auth-form" onSubmit={handleSubmit}>
+                    <label className="auth-label">
+                        Email or Username
+                        <input
+                            className="auth-input"
+                            type="text"
+                            placeholder="you@example.com"
+                            value={form.emailOrUsername}
+                            onChange={(e) =>
+                                setForm({ ...form, emailOrUsername: e.target.value })
+                            }
+                        />
+                    </label>
 
-                <input
-                    type="password"
-                    placeholder="Password"
-                    value={form.password}
-                    onChange={(e) =>
-                        setForm({ ...form, password: e.target.value })
-                    }
-                />
+                    <label className="auth-label">
+                        Password
+                        <input
+                            className="auth-input"
+                            type="password"
+                            placeholder="••••••••"
+                            value={form.password}
+                            onChange={(e) =>
+                                setForm({ ...form, password: e.target.value })
+                            }
+                        />
+                    </label>
 
-                <button type="submit">Login</button>
-            </form>
+                    <button className="auth-button" type="submit" disabled={submitting}>
+                        {submitting ? "Signing in..." : "Sign in"}
+                    </button>
+                </form>
 
-            <div style={{ marginTop: "10px" }}>
-                <Link to="/register">Don't have an account? Register</Link>
+                <div className="auth-footer">
+                    <span>New here?</span>
+                    <Link to="/register">Create an account</Link>
+                </div>
             </div>
         </div>
     );

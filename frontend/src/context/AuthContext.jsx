@@ -1,7 +1,21 @@
-import { createContext, useEffect, useState } from "react";
+import { createContext,useContext, useEffect, useState } from "react";
 import api, { setAccessToken as setGlobalAccessToken } from "../api/axios";
+import { apiLogout } from "../api/auth";
 
 const AuthContext = createContext();
+
+const parseToken = (token, avatarKeyOverride = null) => {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return {
+        userGuid:
+            payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ||
+            payload.nameid,
+        userName: payload.userName,
+        email: payload.email,
+        displayName: payload.DisplayName || payload.displayName || payload.userName,
+        avatarKey: avatarKeyOverride || payload.AvatarKey || payload.avatarKey || null,
+    };
+};
 
 export function AuthProvider({ children }) {
     const [accessToken, setTokenState] = useState(sessionStorage.getItem("accessToken"));
@@ -24,18 +38,13 @@ export function AuthProvider({ children }) {
                 return;
             }
 
-            try {
+        try {
                 
                 const res = await api.post("/auth/refresh", { refreshToken: "ignored" });
 
                 setToken(res.data.token);
 
-                const payload = JSON.parse(atob(res.data.token.split(".")[1]));
-                setUser({
-                    userGuid: payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"],
-                    userName: payload.userName,
-                    displayName: payload.DisplayName,
-                });
+                setUser(parseToken(res.data.token, res.data.avatarKey));
 
             } catch {
                 
@@ -49,18 +58,20 @@ export function AuthProvider({ children }) {
         init();
     }, []);
 
+    const logout = async () => {
+        try {
+            await apiLogout();
+        } catch { /* ignore */ }
+        setToken(null);
+        setUser(null);
+    };
+
     const register = async (form) => {
         const res = await api.post("/auth/register", form);
 
         setToken(res.data.token);
 
-        const payload = JSON.parse(atob(res.data.token.split(".")[1]));
-        setUser({
-            userGuid: payload.nameid,
-            userName: payload.userName,
-            email: payload.email,
-            displayName: payload.DisplayName,
-        });
+        setUser(parseToken(res.data.token, res.data.avatarKey));
 
         return res.data;
     };
@@ -74,24 +85,20 @@ export function AuthProvider({ children }) {
 
         setToken(res.data.token);
 
-        const payload = JSON.parse(atob(res.data.token.split(".")[1]));
-
-  
-        setUser({
-            userGuid: payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"],
-            userName: payload.userName,
-            displayName: payload.DisplayName,
-        });
+        setUser(parseToken(res.data.token, res.data.avatarKey));
 
         return res.data;
     };
 
 
     return (
-        <AuthContext.Provider value={{ accessToken, user, loadingAuth, login, register }}>
+        <AuthContext.Provider value={{ accessToken, user, setUser, loadingAuth, login, register, logout }}>
             {children}
         </AuthContext.Provider>
     );
 }
 
 export default AuthContext;
+export function useAuth() {
+    return useContext(AuthContext);
+}

@@ -42,14 +42,14 @@ namespace backend.Services.Server
                     UserGuid = b.User?.UserGuid ?? Guid.Empty,
                     UserName = b.User?.UserName ?? "Deleted User",
                     DisplayName = b.User?.UserName ?? "Deleted User",
-                    AvatarUrl = b.User?.AvatarURL
+                    AvatarKey = b.User?.AvatarKey
                 },
                 BannedBy = new UserResponseDto
                 {
                     UserGuid = b.BannedByUser?.UserGuid ?? Guid.Empty,
                     UserName = b.BannedByUser?.UserName ?? "Deleted User",
                     DisplayName = b.BannedByUser?.UserName ?? "Deleted User",
-                    AvatarUrl = b.BannedByUser?.AvatarURL
+                    AvatarKey = b.BannedByUser?.AvatarKey
                 },
                 Reason = b.Reason,
                 CreatedAt = b.CreatedAt
@@ -171,9 +171,9 @@ namespace backend.Services.Server
                 User = new UserResponseDto
                 {
                     UserGuid = user.UserGuid,
-                    DisplayName = user.UserName,
+                    DisplayName = user.DisplayName,
                     UserName = user.UserName,
-                    AvatarUrl = user.AvatarURL
+                    AvatarKey = user.AvatarKey
                 },
                 Roles = roles
             };

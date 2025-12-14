@@ -16,6 +16,14 @@ const serverApi = {
 
   leaveServer: (serverGuid) =>
     api.post(`/servers/${serverGuid}/leave`),
+
+  uploadServerIcon: (serverGuid, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/servers/${serverGuid}/icon`, form, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+  }
 };
 
 export default serverApi;
