@@ -1,13 +1,15 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { getUnifiedConnection, onUserEvent } from "../signalr/Media";  
 import { useAuth } from "./AuthContext";
 import { getAccessToken } from "../api/axios";
+import { apiGetVoiceUsers } from "../api/channels";
 import { MediaRoomClient } from '../webrtc/MediaRoomClient';  
 
 const MediaContext = createContext(null);
 
 export function MediaProvider({ children }) {
-    const { loadingAuth } = useAuth();
+    const { loadingAuth, user: authUser } = useAuth();
+    const authUserRef = useRef(authUser);
     const conn = getUnifiedConnection(); 
     const [joinedChannel, setJoinedChannel] = useState(null);
     const [users, setUsers] = useState([]);
@@ -36,8 +38,28 @@ export function MediaProvider({ children }) {
 
   
     useEffect(() => {
+        authUserRef.current = authUser;
+    }, [authUser]);
+
+    useEffect(() => {
         onUserEvent("UserJoinedChannel", (user) => {
-            setUsers((prevUsers) => [...prevUsers, user]);
+            setUsers((prevUsers) => {
+                const enriched = {
+                    ...user,
+                    // Fill in our own display info when the event payload is sparse.
+                    ...(user.userGuid === authUserRef.current?.userGuid
+                        ? { displayName: authUserRef.current.displayName, userName: authUserRef.current.userName }
+                        : {})
+                };
+
+                const existingIdx = prevUsers.findIndex(u => u.userGuid === enriched.userGuid);
+                if (existingIdx >= 0) {
+                    const next = [...prevUsers];
+                    next[existingIdx] = { ...next[existingIdx], ...enriched };
+                    return next;
+                }
+                return [...prevUsers, enriched];
+            });
         });
 
         onUserEvent("UserLeftChannel", (user) => {
@@ -97,6 +119,14 @@ export function MediaProvider({ children }) {
 
         setJoinedChannel(channelGuid);  
         setRoomId(roomId);
+        setUsers([]); // reset voice roster until events arrive for the new channel
+
+        try {
+            const { data } = await apiGetVoiceUsers(channelGuid);
+            setUsers(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error("Failed to load voice users", err);
+        }
     };
 
     const leaveVoice = async (channelGuid) => {
@@ -113,6 +143,7 @@ export function MediaProvider({ children }) {
         setRemoteStreams(new Map());
         setJanusClient(null);
         setRoomId(null);
+        setUsers([]);
     };
 
   
