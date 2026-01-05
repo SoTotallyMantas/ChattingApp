@@ -14,3 +14,6 @@ export const apiUpdateChannel = (serverId, channelId, dto) =>
 
 export const apiDeleteChannel = (serverId, channelId) =>
     api.delete(`/servers/${serverId}/channels/${channelId}`);
+
+export const apiGetVoiceUsers = (channelGuid) =>
+    api.get(`/voice/channels/${channelGuid}/users`);

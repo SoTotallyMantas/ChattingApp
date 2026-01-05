@@ -1,0 +1,149 @@
+.server-context-menu {
+    position: fixed;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 8px;
+    width: 220px;
+    z-index: 99999;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+}
+
+.server-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.server-menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.server-menu-item.danger {
+    color: var(--danger);
+}
+
+.server-menu-label {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.server-settings-container {
+    display: flex;
+    width: 100%;
+    height: 95vh;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.server-settings-tabs {
+    width: 170px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.server-settings-tab {
+    padding: 12px 16px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    font-weight: 400;
+}
+
+.server-settings-tab.active {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.server-settings-spacer {
+    flex: 1;
+}
+
+.server-settings-panel {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.server-settings-input {
+    width: 100%;
+    padding: 10px 12px;
+    margin-top: 5px;
+    margin-bottom: 20px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+}
+
+.server-settings-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    color: white;
+    margin-top: 10px;
+}
+
+.server-settings-btn.primary {
+    background: var(--accent);
+}
+
+.server-settings-btn.danger {
+    background: var(--danger);
+    margin-bottom: 10px;
+}
+
+.server-settings-btn.warn {
+    background: #faa61a;
+}
+
+.server-settings-btn.exit {
+    background: #ed4245;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.server-settings-icon-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.server-settings-icon-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+}
+
+.server-settings-icon-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.server-settings-upload-btn {
+    width: auto;
+    margin-top: 0;
+    padding: 10px 12px;
+}

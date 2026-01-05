@@ -11,7 +11,8 @@ namespace backend.Interfaces
         Task<bool> DeleteMessageAsync(Guid messageGuid, Guid userGuid);
 
         Task AddAttachmentAsync(Guid messageGuid, Stream fileStream, string fileName, string contentType, long sizeBytes, Guid userguid, CancellationToken ct = default);
-        Task<List<MessageResponseDto>> SearchAsync(Guid channelGuid, string query, Guid userGuid, int limit = 20, double minScore = 0.35);
+        Task<bool> RemoveAttachmentAsync(Guid messageGuid, Guid attachmentGuid, Guid userGuid, CancellationToken ct = default);
+        Task<List<MessageResponseDto>> SearchAsync(Guid channelGuid, string query, Guid userGuid, int limit = 20);
         Task<(Stream Stream, string ContentType, string FileName)> GetAttachmentAsync(Guid attachmentGuid, Guid userGuid, CancellationToken ct = default);
     }
 }

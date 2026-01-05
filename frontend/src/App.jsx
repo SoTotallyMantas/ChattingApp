@@ -4,11 +4,11 @@ import AppLayout from "./layout/AppLayout";
 import { useMediaState } from "./context/MediaContext";
 
 export default function App() {
-  const { remoteStreams } = useMediaState();
+  const { remoteStreams, myState } = useMediaState();
 
   useEffect(() => {
     const conn = getConnection();
-    conn.start().catch(console.error);
+    conn.ensureStarted().catch(console.error);
   }, []);
 
   const audioNodes = Array.from(remoteStreams.entries()).map(([userId, stream]) => (
@@ -28,7 +28,7 @@ export default function App() {
       }}
       autoPlay
       playsInline
-      muted={false} 
+      muted={!!myState?.isDeaf}
       controls={true} 
       style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
     />

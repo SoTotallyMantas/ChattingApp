@@ -1,13 +1,18 @@
 import { useOverlay } from "../../context/OverlayContext";
+import { useAppState } from "../../context/AppStateContext";
 import { useToast } from "../../context/ToastContext";
 
 export default function DeleteChannelModal({ channel, deleteChannel }) {
     const { closeOverlay } = useOverlay();
+    const { selectedChannel, setSelectedChannel } = useAppState();
     const toast = useToast();
 
     const remove = async () => {
         try {
             await deleteChannel(channel.channelGuid);
+            if (selectedChannel?.channelGuid === channel.channelGuid) {
+                setSelectedChannel(null);
+            }
             toast.show("success", "Channel deleted.");
             closeOverlay();
         } catch {

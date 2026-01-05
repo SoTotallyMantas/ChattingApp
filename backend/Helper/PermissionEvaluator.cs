@@ -31,12 +31,6 @@ namespace backend.Helper
 
            
      
-
-            if (roles.Any(r => r.Role.IsAdmin))
-            {
-                return true;
-            }
-
             var perm = await _db.Permissions.FirstOrDefaultAsync(p => p.Name == permission);
             if(perm == null)
             {

@@ -3,9 +3,17 @@ export default function PermissionSelector({
     permissions = [],
     selected = [],
     onChange,
-    toggle
+    toggle,
+    allowedPermissions = [],
+    lockedPermissions = []
 }) {
+    const hasAllowList = allowedPermissions.length > 0;
+
     const handleToggle = (id) => {
+        const isLocked = lockedPermissions.includes(id);
+        const isAllowed = !hasAllowList || allowedPermissions.includes(id);
+        if (isLocked || !isAllowed) return;
+
         if (onChange) {
             const next = selected.includes(id)
                 ? selected.filter((p) => p !== id)
@@ -17,23 +25,21 @@ export default function PermissionSelector({
     };
 
     return (
-        <div style={{ marginTop: 10, color: "var(--text-primary)" }}>
-            <h4 style={{ margin: "8px 0" }}>Permissions</h4>
+        <div className="permission-selector">
+            <h4 className="permission-selector-title">Permissions</h4>
 
             {permissions.map((perm) => (
                 <label
                     key={perm.permissionGuid}
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "4px 0",
-                        color: "var(--text-primary)"
-                    }}
+                    className="permission-selector-item"
                 >
                     <input
                         type="checkbox"
                         checked={selected.includes(perm.permissionGuid)}
+                        disabled={
+                            lockedPermissions.includes(perm.permissionGuid) ||
+                            (hasAllowList && !allowedPermissions.includes(perm.permissionGuid))
+                        }
                         onChange={() => handleToggle(perm.permissionGuid)}
                     />
                     {perm.permissionName}

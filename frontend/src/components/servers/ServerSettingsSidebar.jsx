@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useAppState } from "../../context/AppStateContext";
-import serverApi from "../../api/servers";
-import { useToast } from "../../context/ToastContext";
-import { useServers } from "../../hooks/useServers";
+import { useAuth } from "../../context/AuthContext";
 import { useOverlay } from "../../context/OverlayContext";
+import { useServerActions } from "../../hooks/useServerActions";
+import "./ServerStyles.css";
 
 import RolesPanel from "../roles/RolesPanel";
 import UsersPanel from "../members/UsersPanel";
@@ -15,23 +15,29 @@ import BanList from "../members/BanList";
 export default function ServerSettingsSidebar() {
     const {
         selectedServer,
-        setSelectedServer,
-        setSelectedChannel,
         serverSettingsOpen,
         setServerSettingsOpen,
     } = useAppState();
+    const { user } = useAuth();
 
-    const { loadServers } = useServers();
     const { openOverlay } = useOverlay();
-    const toast = useToast();
+    const {
+        updateServerDetails,
+        deleteServer: deleteServerAction,
+        leaveServer: leaveServerAction
+    } = useServerActions();
     const inviteListRef = useRef();
 
     if (!serverSettingsOpen || !selectedServer) return null;
-
     const [tab, setTab] = useState("overview");
     const permissions = selectedServer?.permissions || [];
+    const ownerGuid = selectedServer?.ownerGuid ?? selectedServer?.OwnerGuid;
+    const isOwner = ownerGuid && user?.userGuid && ownerGuid === user.userGuid;
     const canBan = permissions.includes("BAN_MEMBERS");
-
+    const canManageServer = permissions.includes("MANAGE_SERVER");
+    const canManageRoles = permissions.includes("MANAGE_ROLES");
+    const canInvite = permissions.includes("CREATE_INVITES");
+    const canManageUsers = canManageRoles;
     const [serverName, setServerName] = useState(selectedServer.serverName);
     const [iconKey, setIconKey] = useState(selectedServer.iconKey || "");
     const [iconFile, setIconFile] = useState(null);
@@ -40,91 +46,67 @@ export default function ServerSettingsSidebar() {
     const fileInputRef = useRef(null);
 
     useEffect(() => {
+        if (!selectedServer?.serverGuid) return;
         setServerName(selectedServer.serverName);
         setIconKey(selectedServer.iconKey || "");
         setIconFile(null);
         setIconPreview(null);
         setTab("overview");
-    }, [selectedServer]);
+    }, [selectedServer?.serverGuid]);
+
+    useEffect(() => {
+        if (!selectedServer) return;
+        setServerName(selectedServer.serverName);
+        setIconKey(selectedServer.iconKey || "");
+    }, [selectedServer?.serverName, selectedServer?.iconKey]);
 
     const save = async () => {
-        try {
-            let nextIconKey = iconKey;
+        const result = await updateServerDetails({
+            server: selectedServer,
+            serverName,
+            iconFile,
+            iconKey
+        });
 
-            if (iconFile) {
-                const res = await serverApi.uploadServerIcon(selectedServer.serverGuid, iconFile);
-                const key = res.data?.iconKey;
-                if (key) {
-                    nextIconKey = key;
-                    setIconKey(key);
-                    setSelectedServer(prev => prev ? { ...prev, iconKey: key } : prev);
-                    setIconFile(null);
-                    setIconPreview(null);
-                }
-            }
+        if (!result) return;
 
-            const updated = await serverApi.updateServer(selectedServer.serverGuid, {
-                serverGuid: selectedServer.serverGuid,
-                serverName,
-                iconKey: nextIconKey || null,
-            });
+        if (result.iconKey !== undefined) {
+            setIconKey(result.iconKey || "");
+        }
 
-            toast.show("success", "Server updated.");
-            await loadServers();
-            setSelectedServer(updated.data ?? selectedServer);
-        } catch {
-            toast.show("error", "Failed to update server.");
+        if (iconFile) {
+            setIconFile(null);
+            setIconPreview(null);
         }
     };
 
     const deleteServer = async () => {
-        try {
-            await serverApi.deleteServer(selectedServer.serverGuid);
-            toast.show("success", "Server deleted.");
-
-            await loadServers();
-            setSelectedServer(null);
-            setSelectedChannel(null);
-            setServerSettingsOpen(false);
-        } catch {
-            toast.show("error", "Failed to delete server.");
-        }
+        await deleteServerAction(selectedServer);
     };
 
     const leaveServer = async () => {
-        try {
-            await serverApi.leaveServer(selectedServer.serverGuid);
-
-            toast.show("success", `Left ${selectedServer.serverName}`);
-            setSelectedServer(null);
-            setSelectedChannel(null);
-            setServerSettingsOpen(false);
-
-            await loadServers();
-        } catch {
-            toast.show("error", "Failed to leave server.");
-        }
+        await leaveServerAction(selectedServer);
     };
 
     return (
-        <div style={container}>
-            <div style={tabs}>
-                <Tab label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
-                <Tab label="Roles" active={tab === "roles"} onClick={() => setTab("roles")} />
-                <Tab label="Manage Users" active={tab === "manageUsers"} onClick={() => setTab("manageUsers")} />
-                <Tab label="Invites" active={tab === "invites"} onClick={() => setTab("invites")} />
+        <div className="server-settings-container">
+            <div className="server-settings-tabs">
+                {canManageServer && <Tab label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />}
+                {canManageRoles && <Tab label="Roles" active={tab === "roles"} onClick={() => setTab("roles")} />}
+                {canManageUsers && <Tab label="Manage Users" active={tab === "manageUsers"} onClick={() => setTab("manageUsers")} />}
+                {canInvite && <Tab label="Invites" active={tab === "invites"} onClick={() => setTab("invites")} />}
                 {canBan && <Tab label="Bans" active={tab === "bans"} onClick={() => setTab("bans")} />}
                 <Tab label="Danger Zone" active={tab === "danger"} onClick={() => setTab("danger")} />
 
-                <div style={{ flex: 1 }} />
+                <div className="server-settings-spacer" />
 
-                <button style={exitBtn} onClick={() => setServerSettingsOpen(false)}>
+                <button className="server-settings-btn exit" onClick={() => setServerSettingsOpen(false)}>
                     Exit
                 </button>
             </div>
 
-            <div style={panel}>
-                {tab === "overview" && (
+            <div className="server-settings-panel">
+                {tab === "overview" && canManageServer && (
                     <>
                         <h2>Overview</h2>
 
@@ -132,18 +114,18 @@ export default function ServerSettingsSidebar() {
                         <input
                             value={serverName}
                             onChange={(e) => setServerName(e.target.value)}
-                            style={input}
+                            className="server-settings-input"
                         />
 
                         <label>Icon</label>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: "50%", overflow: "hidden", background: "var(--bg-tertiary)" }}>
+                        <div className="server-settings-icon-row">
+                            <div className="server-settings-icon-thumb">
                                 {(iconPreview || iconSrc) ? (
-                                    <img src={iconPreview || iconSrc} alt="Server icon" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                    <img src={iconPreview || iconSrc} alt="Server icon" />
                                 ) : null}
                             </div>
                             <button
-                                style={primaryBtn}
+                                className="server-settings-btn primary server-settings-upload-btn"
                                 onClick={() => fileInputRef.current?.click()}
                                 type="button"
                             >
@@ -154,7 +136,7 @@ export default function ServerSettingsSidebar() {
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
-                            style={{ display: "none" }}
+                            className="server-settings-file-input"
                             onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
@@ -164,19 +146,19 @@ export default function ServerSettingsSidebar() {
                             }}
                         />
 
-                        <button style={primaryBtn} onClick={save}>Save Changes</button>
+                        <button className="server-settings-btn primary" onClick={save}>Save Changes</button>
                     </>
                 )}
 
-                {tab === "roles" && (
+                {tab === "roles" && canManageRoles &&(
                     <RolesPanel serverId={selectedServer.serverGuid} />
                 )}
 
-                {tab === "manageUsers" && (
+                {tab === "manageUsers" && canManageUsers && (
                     <UsersPanel serverId={selectedServer.serverGuid} />
                 )}
 
-                {tab === "invites" && (
+                {tab === "invites" && canInvite && (
                     <div>
                         <InviteCreatePanel
                             serverGuid={selectedServer.serverGuid}
@@ -198,23 +180,25 @@ export default function ServerSettingsSidebar() {
                     <>
                         <h2>Danger Zone</h2>
 
+                        {isOwner && (
+                            <button
+                                className="server-settings-btn danger"
+                                onClick={() =>
+                                    openOverlay("confirm", {
+                                        title: "Delete Server",
+                                        message: `Delete "${selectedServer.serverName}"? This cannot be undone.`,
+                                        confirmLabel: "Yes, delete",
+                                        cancelLabel: "Cancel",
+                                        variant: "danger",
+                                        onConfirm: deleteServer
+                                    })
+                                }
+                            >
+                                Delete Server
+                            </button>
+                        )}
                         <button
-                            style={dangerBtn}
-                            onClick={() =>
-                                openOverlay("confirm", {
-                                    title: "Delete Server",
-                                    message: `Delete "${selectedServer.serverName}"? This cannot be undone.`,
-                                    confirmLabel: "Yes, delete",
-                                    cancelLabel: "Cancel",
-                                    variant: "danger",
-                                    onConfirm: deleteServer
-                                })
-                            }
-                        >
-                            Delete Server
-                        </button>
-                        <button
-                            style={warnBtn}
+                            className="server-settings-btn warn"
                             onClick={() =>
                                 openOverlay("confirm", {
                                     title: "Leave Server",
@@ -239,99 +223,9 @@ function Tab({ label, active, onClick }) {
     return (
         <div
             onClick={onClick}
-            style={{
-                padding: "12px 16px",
-                cursor: "pointer",
-                background: active ? "var(--bg-tertiary)" : "transparent",
-                color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                borderRadius: 4,
-                marginBottom: 6,
-                fontWeight: active ? 600 : 400,
-            }}
+            className={`server-settings-tab${active ? " active" : ""}`}
         >
             {label}
         </div>
     );
 }
-
-const container = {
-    display: "flex",
-    width: "100%",
-    height: "95vh",
-    background: "var(--bg-secondary)",
-    color: "var(--text-primary)",
-    borderRadius: 12,
-    overflow: "hidden",
-    boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
-};
-
-const tabs = {
-    width: 170,
-    padding: 15,
-    display: "flex",
-    flexDirection: "column",
-    borderRight: `1px solid var(--border-color)`,
-    background: "var(--bg-secondary)",
-};
-
-const panel = {
-    flex: 1,
-    padding: 20,
-    overflowY: "auto",
-};
-
-const input = {
-    width: "100%",
-    padding: 10,
-    marginTop: 5,
-    marginBottom: 20,
-    background: "var(--bg-tertiary)",
-    border: `1px solid var(--border-color)`,
-    borderRadius: 5,
-    color: "var(--text-primary)",
-};
-
-const primaryBtn = {
-    width: "100%",
-    padding: 12,
-    borderRadius: 5,
-    border: "none",
-    cursor: "pointer",
-    background: "var(--accent)",
-    color: "white",
-    marginTop: 10,
-};
-
-const dangerBtn = {
-    width: "100%",
-    padding: 12,
-    background: "var(--danger)",
-    borderRadius: 5,
-    border: "none",
-    cursor: "pointer",
-    color: "white",
-    marginBottom: 10,
-};
-
-const warnBtn = {
-    width: "100%",
-    padding: 12,
-    background: "#faa61a",
-    borderRadius: 5,
-    border: "none",
-    cursor: "pointer",
-    color: "white",
-};
-
-const exitBtn = {
-    padding: 12,
-    marginTop: 10,
-    width: "100%",
-    background: "#ed4245",
-    border: "none",
-    borderRadius: 5,
-    cursor: "pointer",
-    color: "white",
-    fontWeight: 700,
-    fontSize: 14,
-};

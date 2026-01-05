@@ -7,6 +7,7 @@ import {
     removeSignalREvent,
     connectionState
 } from "../signalr/index";
+import { useAuth } from "../context/AuthContext";
 
 
 export function useChannelMessages(channelGuid) {
@@ -20,6 +21,7 @@ export function useChannelMessages(channelGuid) {
 
     const channelRef = useRef(null);
     const conn = getConnection();
+    const { user } = useAuth();
 
     
     useEffect(() => {
@@ -30,6 +32,13 @@ export function useChannelMessages(channelGuid) {
 
         const loadChannel = async () => {
             const previous = channelRef.current;
+
+            try {
+                await conn.ensureStarted();
+            } catch (err) {
+                console.error("SignalR connection failed to start:", err);
+                return;
+            }
 
             if (previous && previous !== channelGuid) {
                 try {
@@ -156,6 +165,43 @@ export function useChannelMessages(channelGuid) {
             removeSignalREvent("MessageDeleted", handleDeleted);
         };
     }, []);
+
+    useEffect(() => {
+        const handleProfileUpdated = (payload) => {
+            const userGuid = payload?.userGuid;
+            if (!userGuid) return;
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m.userGuid === userGuid
+                        ? {
+                            ...m,
+                            displayName: payload.displayName ?? m.displayName,
+                            avatarKey: payload.avatarKey ?? m.avatarKey
+                        }
+                        : m
+                )
+            );
+        };
+        onSignalREvent("UserProfileUpdated", handleProfileUpdated);
+        return () => removeSignalREvent("UserProfileUpdated", handleProfileUpdated);
+    }, []);
+
+    useEffect(() => {
+        if (!user?.userGuid) return;
+
+        setMessages((prev) =>
+            prev.map((m) =>
+                m.userGuid === user.userGuid
+                    ? {
+                        ...m,
+                        displayName: user.displayName || m.displayName,
+                        userName: user.userName || m.userName,
+                        avatarKey: user.avatarKey ?? m.avatarKey
+                    }
+                    : m
+            )
+        );
+    }, [user?.displayName, user?.userName, user?.avatarKey, user?.userGuid]);
 
     return {
         messages,

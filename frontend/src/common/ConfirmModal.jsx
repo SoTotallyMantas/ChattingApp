@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useOverlay } from "../context/OverlayContext";
+import Modal from "./Modal";
 
 export default function ConfirmModal({
     title = "Are you sure?",
@@ -7,16 +8,25 @@ export default function ConfirmModal({
     confirmLabel = "Yes",
     cancelLabel = "No",
     onConfirm,
-    variant = "danger"
+    inputLabel,
+    inputPlaceholder = "",
+    inputRequired = false,
+    inputMultiline = false,
+    inputDefaultValue = "",
+    inputType = "text"
 }) {
     const { closeOverlay } = useOverlay();
     const [loading, setLoading] = useState(false);
+    const [inputValue, setInputValue] = useState(inputDefaultValue);
+    const showInput = Boolean(inputLabel || inputPlaceholder);
+    const trimmedValue = inputValue.trim();
+    const disableConfirm = loading || (showInput && inputRequired && trimmedValue.length === 0);
 
     const handleConfirm = async () => {
-        if (loading) return;
+        if (disableConfirm) return;
         setLoading(true);
         try {
-            await onConfirm?.();
+            await onConfirm?.(showInput ? inputValue : undefined);
         } finally {
             setLoading(false);
             closeOverlay();
@@ -24,30 +34,41 @@ export default function ConfirmModal({
     };
 
     return (
-        <div
-            data-overlay-root="true"
-            style={{
-                width: 420,
-                maxWidth: "90vw",
-                background: "var(--bg-secondary)",
-                color: "var(--text-primary)",
-                padding: 24,
-                borderRadius: 10,
-                boxShadow: "0 12px 40px rgba(0,0,0,0.45)"
-            }}
-        >
-            <h2 style={{ margin: "0 0 10px" }}>{title}</h2>
-            {message && (
-                <p style={{ color: "var(--text-secondary)", margin: "6px 0 18px" }}>
-                    {message}
-                </p>
+        <Modal onClose={closeOverlay}>
+            <h2>{title}</h2>
+            {message && <p>{message}</p>}
+            {showInput && (
+                <div className="confirm-modal-input">
+                    {inputLabel && (
+                        <label className="confirm-modal-input-label">
+                            {inputLabel}
+                        </label>
+                    )}
+                    {inputMultiline ? (
+                        <textarea
+                            className="input "
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            placeholder={inputPlaceholder}
+                            rows={3}
+                        />
+                    ) : (
+                        <input
+                            className="input "
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            placeholder={inputPlaceholder}
+                            type={inputType}
+                        />
+                    )}
+                </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <div className="confirm-modal-actions">
                 <button
                     type="button"
                     onClick={closeOverlay}
-                    style={secondaryBtn}
+                    className="button"
                     disabled={loading}
                 >
                     {cancelLabel}
@@ -55,37 +76,12 @@ export default function ConfirmModal({
                 <button
                     type="button"
                     onClick={handleConfirm}
-                    style={variant === "danger" ? dangerBtn : primaryBtn}
-                    disabled={loading}
+                    className="button"
+                    disabled={disableConfirm}
                 >
                     {loading ? "Working..." : confirmLabel}
                 </button>
             </div>
-        </div>
+        </Modal>
     );
 }
-
-const baseBtn = {
-    padding: "10px 16px",
-    borderRadius: 6,
-    border: "none",
-    cursor: "pointer",
-    color: "white",
-    minWidth: 90
-};
-
-const secondaryBtn = {
-    ...baseBtn,
-    background: "#4f535c"
-};
-
-const primaryBtn = {
-    ...baseBtn,
-    background: "#5865f2"
-};
-
-const dangerBtn = {
-    ...baseBtn,
-    background: "#ed4245",
-    fontWeight: 600
-};

@@ -5,19 +5,21 @@ using backend.DTO.ServerDtos;
 using backend.DTO.UserDtos;
 using backend.Extensions;
 using backend.Helper;
+using backend.Hubs;
 using backend.Interfaces;
 using backend.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-
 namespace backend.Services.Server
 {
-    public class ServerMembersService(VoxlockDbContext db, IPermissionEvualuator perm, IServerHelper helper) : IServerMemberService
+    public class ServerMembersService(VoxlockDbContext db, IPermissionEvualuator perm, IServerHelper helper, IHubContext<ChatHub> hubContext) : IServerMemberService
     {
         private readonly VoxlockDbContext _db = db;
         private readonly IPermissionEvualuator _perm = perm;
         private readonly IServerHelper _helper = helper;
-
+        private readonly IHubContext<ChatHub> _hubContext = hubContext;
+        private readonly CheckHierarchy _checker = new(db);
         public async Task<List<BanResponseDto>> GetServerBansAsync(Guid serverGuid, ClaimsPrincipal user)
         {
             Guid userGuid = user.GetUserGuid();
@@ -82,6 +84,20 @@ namespace backend.Services.Server
             if (dto.UserGuid == userGuid)
                 throw new InvalidOperationException("You cannot kick yourself.");
 
+            var server = await _helper.GetServerOrThrowAsync(serverGuid);
+            if (server.OwnerGuid == dto.UserGuid)
+                throw new InvalidOperationException("You cannot kick the server owner.");
+
+            if (server.OwnerGuid != userGuid)
+            {   
+             
+                var actorPos = await _checker.GetRoleLowestPositionAsync(serverGuid, userGuid);
+                var targetPos = await _checker.GetRoleLowestPositionAsync(serverGuid, dto.UserGuid);
+
+                if (targetPos <= actorPos)
+                    throw new InvalidOperationException("You cannot kick a member with equal or higher role.");
+            }
+
             var membership = await _db.ServerMembers
                 .FirstOrDefaultAsync(m => m.ServerGuid == serverGuid && m.UserGuid == dto.UserGuid);
 
@@ -97,6 +113,12 @@ namespace backend.Services.Server
             _db.ServerUserRoles.RemoveRange(roles);
 
             await _db.SaveChangesAsync();
+            await _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerMembersUpdated", new { serverGuid });
+            await _hubContext.Clients
+                .User(dto.UserGuid.ToString())
+                .SendAsync("ServerMembershipRemoved", new { serverGuid, action = "kick" });
         }
 
       
@@ -104,25 +126,46 @@ namespace backend.Services.Server
         {
             Guid userGuid = user.GetUserGuid();
 
+            if (string.IsNullOrWhiteSpace(dto.Reason))
+                throw new InvalidOperationException("Ban reason is required.");
+
             await _perm.RequirePermissionAsync(serverGuid, userGuid, AppPermissions.BAN_MEMBERS);
 
             if (dto.UserGuid == userGuid)
                 throw new InvalidOperationException("You cannot ban yourself.");
 
-            // Remove membership if exists
+            var server = await _helper.GetServerOrThrowAsync(serverGuid);
+            if (server.OwnerGuid == dto.UserGuid)
+                throw new InvalidOperationException("You cannot ban the server owner.");
+
+            if (server.OwnerGuid != userGuid)
+            {
+                
+                var actorPos = await _checker.GetRoleLowestPositionAsync(serverGuid, userGuid);
+                var targetPos = await _checker.GetRoleLowestPositionAsync(serverGuid, dto.UserGuid);
+
+                if (targetPos <= actorPos)
+                    throw new InvalidOperationException("You cannot ban a member with equal or higher role.");
+            }
+
+            var bannedList = await _db.ServerBans.Where(bannedUser => bannedUser.UserGuid == dto.UserGuid && bannedUser.ServerGuid == serverGuid).ToListAsync();
+            if (bannedList.Count != 0)
+            {
+                throw new InvalidOperationException("User Already Banned");
+            }
             var membership = await _db.ServerMembers
                 .FirstOrDefaultAsync(m => m.ServerGuid == serverGuid && m.UserGuid == dto.UserGuid);
 
             if (membership != null)
                 _db.ServerMembers.Remove(membership);
 
-            // Remove role assignments
+            
             var roles = _db.ServerUserRoles
                 .Where(r => r.ServerGuid == serverGuid && r.UserGuid == dto.UserGuid);
 
             _db.ServerUserRoles.RemoveRange(roles);
 
-            // Add ban entry
+           
             var ban = new ServerBans
             {
                 BanGuid = Guid.NewGuid(),
@@ -136,6 +179,12 @@ namespace backend.Services.Server
             _db.ServerBans.Add(ban);
 
             await _db.SaveChangesAsync();
+            await _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerMembersUpdated", new { serverGuid });
+            await _hubContext.Clients
+                .User(dto.UserGuid.ToString())
+                .SendAsync("ServerMembershipRemoved", new { serverGuid, action = "ban" });
         }
 
        
@@ -173,7 +222,8 @@ namespace backend.Services.Server
                     UserGuid = user.UserGuid,
                     DisplayName = user.DisplayName,
                     UserName = user.UserName,
-                    AvatarKey = user.AvatarKey
+                    AvatarKey = user.AvatarKey,
+                    Presence = user.Status
                 },
                 Roles = roles
             };
@@ -198,5 +248,7 @@ namespace backend.Services.Server
                     .ToList()
             };
         }
+
+        
     }
 }

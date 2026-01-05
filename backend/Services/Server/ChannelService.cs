@@ -2,18 +2,21 @@
 using backend.DTO.ChannelDtos;
 using backend.Extensions;
 using backend.Helper;
+using backend.Hubs;
 using backend.Interfaces;
 using backend.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace backend.Services.Server
 {
-    public class ChannelService(VoxlockDbContext db, IPermissionEvualuator perm, IServerHelper helper) : IChannelService
+    public class ChannelService(VoxlockDbContext db, IPermissionEvualuator perm, IServerHelper helper, IHubContext<ChatHub> hubContext) : IChannelService
     {
         private readonly VoxlockDbContext _db = db;
         private readonly IPermissionEvualuator _perm = perm;
         private readonly IServerHelper _helper = helper;
+        private readonly IHubContext<ChatHub> _hubContext = hubContext;
 
 
         public async Task<ChannelResponseDto> CreateChannelAsync(Guid serverGuid, CreateChannelRequestDto dto, ClaimsPrincipal user)
@@ -40,6 +43,10 @@ namespace backend.Services.Server
 
             _db.Channels.Add(channel);
             await _db.SaveChangesAsync();
+
+            await _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerChannelsUpdated", new { serverGuid, channelGuid = channel.ChannelGuid, action = "created" });
 
             return MapChannel(channel);
         }
@@ -89,6 +96,10 @@ namespace backend.Services.Server
 
             await _db.SaveChangesAsync();
 
+            await _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerChannelsUpdated", new { serverGuid, channelGuid, action = "updated" });
+
             return MapChannel(channel);
         }
 
@@ -109,6 +120,10 @@ namespace backend.Services.Server
 
             _db.Channels.Remove(channel);
             await _db.SaveChangesAsync();
+
+            await _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerChannelsUpdated", new { serverGuid, channelGuid, action = "deleted" });
         }
 
         

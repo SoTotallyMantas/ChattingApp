@@ -10,6 +10,7 @@ namespace backend.Models
         public string Email { get; set; } = default!;
         public string PasswordHash { get; set; } = default!;
         public string PasswordSalt { get; set; } = default!;
+        public bool IsSystemAdmin { get; set; } = false;
         public DateTime CreatedAt { get; set; }
         public string? Status { get; set; }
         public string? AvatarKey { get; set; }

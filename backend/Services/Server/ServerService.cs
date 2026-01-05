@@ -2,28 +2,33 @@
 using backend.DTO.ServerDtos;
 using backend.Extensions;
 using backend.Helper;
+using backend.Hubs;
 using backend.Interfaces;
 using backend.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace backend.Services.Server
 {
-    public class ServerService(VoxlockDbContext db,IPermissionService perm,IServerHelper helper, IS3StorageService storage) : IServerService
+    public class ServerService(VoxlockDbContext db,IPermissionService perm,IServerHelper helper, IS3StorageService storage, IHubContext<ChatHub> hubContext) : IServerService
     {
 
         private readonly VoxlockDbContext _db = db;
         private readonly IPermissionService _perm = perm;
         private readonly IServerHelper _helper = helper;
         private readonly IS3StorageService _storage = storage;
+        private readonly IHubContext<ChatHub> _hubContext = hubContext;
 
         public async Task<List<ServerResponseDto>> GetMyServersAsync(ClaimsPrincipal user)
         {
             Guid userGuid = user.GetUserGuid();
 
-            var servers = await _db.ServerMembers
-                .Where(m => m.UserGuid == userGuid)
-                .Select(m => m.server)
+            var servers = await _db.Servers
+                .Where(s => s.Members.Any(m => m.UserGuid == userGuid))
+                .Where(s => !(s.Members.Count() == 2 &&
+                              s.Channels.Count() == 1 &&
+                              s.Channels.Any(c => c.Type == "dm")))
                 .ToListAsync();
 
             return servers.Select(MapServer).ToList();
@@ -67,7 +72,7 @@ namespace backend.Services.Server
                 Color = "#FF8800",
                 IsAdmin = true,
                 IsDefault = false,
-                Position = 1000 
+                Position = 0 
             };
 
             _db.ServerRoles.Add(ownerRole);
@@ -94,13 +99,13 @@ namespace backend.Services.Server
                 Color = "#5865F2",
                 IsAdmin = false,
                 IsDefault = true,
-                Position = 100
+                Position = int.MaxValue
             };
 
             _db.ServerRoles.Add(defaultRole);
             await _db.SaveChangesAsync();
 
-            var defaultPerms = new[] { AppPermissions.VIEW_SERVER, AppPermissions.SEND_MESSAGES };
+            var defaultPerms = new[] { AppPermissions.SEND_MESSAGES };
             foreach (var perm in defaultPerms)
             {
                 _db.ServerRolePermissions.Add(new ServerRolePermissions
@@ -142,6 +147,15 @@ namespace backend.Services.Server
 
             await _db.SaveChangesAsync();
 
+            await _hubContext.Clients
+                .Group($"server-{server.ServerGuid}")
+                .SendAsync("ServerUpdated", new
+                {
+                    serverGuid = server.ServerGuid,
+                    serverName = server.ServerName,
+                    iconKey = server.IconKey
+                });
+
             return MapServer(server);
         }
 
@@ -153,7 +167,9 @@ namespace backend.Services.Server
             var server = await _helper.GetServerOrThrowAsync(serverGuid);
 
             if (server.OwnerGuid != userGuid)
-                throw new UnauthorizedAccessException("Only the server owner can modify the server.");
+            {
+                await _perm.RequireAsync(serverGuid, userGuid, AppPermissions.MANAGE_SERVER);
+            }
 
             server.ServerName = dto.ServerName;
             server.IconKey = dto.IconKey;
@@ -188,8 +204,61 @@ namespace backend.Services.Server
             var server = await _helper.GetServerOrThrowAsync(serverGuid);
 
            
+            var ownershipChanged = false;
             if (server.OwnerGuid == userGuid)
-                throw new InvalidOperationException("Server owner cannot leave the server. Transfer ownership or delete the server.");
+            {
+                var memberCount = await _db.ServerMembers.CountAsync(m => m.ServerGuid == serverGuid);
+                if (memberCount > 1)
+                {
+                    var candidate = await _db.ServerUserRoles
+                        .Where(ur => ur.ServerGuid == serverGuid && ur.UserGuid != userGuid)
+                        .Select(ur => new
+                        {
+                            ur.UserGuid,
+                            Position = ur.Role.IsDefault ? int.MaxValue : ur.Role.Position
+                        })
+                        .GroupBy(x => x.UserGuid)
+                        .Select(g => new { UserGuid = g.Key, Position = g.Min(x => x.Position) })
+                        .OrderBy(x => x.Position)
+                        .FirstOrDefaultAsync();
+
+                    var newOwnerGuid = candidate?.UserGuid ?? await _db.ServerMembers
+                        .Where(m => m.ServerGuid == serverGuid && m.UserGuid != userGuid)
+                        .Select(m => m.UserGuid)
+                        .FirstOrDefaultAsync();
+
+                    if (newOwnerGuid == Guid.Empty)
+                    {
+                        throw new InvalidOperationException("Could not transfer ownership.");
+                    }
+
+                    server.OwnerGuid = newOwnerGuid;
+                    ownershipChanged = true;
+
+                    var ownerRoleGuid = await _db.ServerRoles
+                        .Where(r => r.ServerGuid == serverGuid && !r.IsDefault && r.RoleName.ToLower() == "owner")
+                        .Select(r => r.RoleGuid)
+                        .FirstOrDefaultAsync();
+
+                    if (ownerRoleGuid != Guid.Empty)
+                    {
+                        bool hasOwnerRole = await _db.ServerUserRoles.AnyAsync(ur =>
+                            ur.ServerGuid == serverGuid &&
+                            ur.UserGuid == newOwnerGuid &&
+                            ur.RoleGuid == ownerRoleGuid);
+                        if (!hasOwnerRole)
+                        {
+                            _db.ServerUserRoles.Add(new ServerUserRoles
+                            {
+                                ServerGuid = serverGuid,
+                                UserGuid = newOwnerGuid,
+                                RoleGuid = ownerRoleGuid,
+                                AddedAt = DateTime.UtcNow
+                            });
+                        }
+                    }
+                }
+            }
 
             
             var roles = _db.ServerUserRoles
@@ -213,6 +282,22 @@ namespace backend.Services.Server
                 _db.Servers.Remove(server);
 
             await _db.SaveChangesAsync();
+            if (!noMembersLeft)
+            {
+                if (ownershipChanged)
+                {
+                    await _hubContext.Clients
+                        .Group($"server-{serverGuid}")
+                        .SendAsync("ServerUpdated", new
+                        {
+                            serverGuid,
+                            ownerGuid = server.OwnerGuid
+                        });
+                }
+                await _hubContext.Clients
+                    .Group($"server-{serverGuid}")
+                    .SendAsync("ServerMembersUpdated", new { serverGuid });
+            }
         }
 
         public async Task<(Stream stream, string contentType)?> GetServerIconAsync(Guid serverGuid, CancellationToken ct)
@@ -239,11 +324,20 @@ namespace backend.Services.Server
 
             if (!string.IsNullOrEmpty(oldKey) && oldKey != newKey)
             {
-                try { await _storage.DeleteAsync(oldKey, ct); } catch { /* best effort */ }
+                try { await _storage.DeleteAsync(oldKey, ct); } catch { }
             }
 
             server.IconKey = newKey;
             await _db.SaveChangesAsync(ct);
+
+            await _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerUpdated", new
+                {
+                    serverGuid,
+                    serverName = server.ServerName,
+                    iconKey = server.IconKey
+                });
 
             return newKey;
         }

@@ -19,31 +19,11 @@ export function ToastProvider({ children }) {
             {children}
 
           
-            <div
-                style={{
-                    position: "fixed",
-                    bottom: 20,
-                    left: 20,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                    zIndex: 999,
-                }}
-            >
+            <div className="toast-stack">
                 {toasts.map((t) => (
                     <div
                         key={t.id}
-                        style={{
-                            padding: "10px 16px",
-                            borderRadius: 6,
-                            background:
-                                t.type === "error"
-                                    ? "var(--danger)"
-                                    : "var(--accent)",
-                            color: "white",
-                            fontWeight: 500,
-                            boxShadow: "0 0 10px rgba(0,0,0,0.3)",
-                        }}
+                        className={`toast ${t.type === "error" ? "toast--error" : "toast--success"}`}
                     >
                         {t.message}
                     </div>

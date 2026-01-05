@@ -1,14 +1,13 @@
 import { getAvatarSrc } from "../../utils/avatar";
 
-export default function VoiceMiniAvatar({ user, onClick, style }) {
+export default function VoiceMiniAvatar({ user, onClick, size = "md" }) {
     if (!user) return null;
 
     const {
         avatarKey,
         displayName,
         userGuid,
-        isMuted,
-        isDeafened,
+
         isSpeaking
     } = user;
 
@@ -19,88 +18,33 @@ export default function VoiceMiniAvatar({ user, onClick, style }) {
         .substring(0, 2)
         .toUpperCase();
 
-    const ringColor =
-        isSpeaking ? "var(--accent)" :
-            isMuted ? "#f87171" :
-                isDeafened ? "#fbbf24" :
-                    "var(--border-color)";
+    const avatarClassName = [
+        "avatar",
+        size === "sm" ? "avatar--sm" : "avatar--md",
+        isSpeaking ? "voice-mini-avatar--speaking" : ""
+    ]
+        .filter(Boolean)
+        .join(" ");
 
     return (
         <div
             onClick={onClick}
-            style={{
-                width: 34,
-                height: 34,
-                borderRadius: "50%",
-                border: `2px solid ${ringColor}`,
-                background: "var(--bg-tertiary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                position: "relative",
-                cursor: "pointer",
-                overflow: "hidden",
-                userSelect: "none",
-                ...style
-            }}
+            className={avatarClassName}
         >
             {src ? (
                 <img
                     src={src}
                     alt=""
-                    style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover"
-                    }}
+                    className="avatar"
                 />
             ) : (
-                <span
-                    style={{
-                        color: "var(--text-primary)",
-                        fontSize: 12,
-                        fontWeight: "bold"
-                    }}
-                >
+                <span className="voice-mini-avatar-initials">
                     {initial}
                 </span>
             )}
 
-            {isMuted && (
-                <div style={badgeMuted}>
-                    📴
-                </div>
-            )}
-
-            {isDeafened && (
-                <div style={badgeDeaf}>
-                    🙉
-                </div>
-            )}
+            
         </div>
     );
 }
 
-const badgeBase = {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    width: 14,
-    height: 14,
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 10,
-    color: "white"
-};
-
-const badgeMuted = {
-    ...badgeBase,
-    background: "#f87171"
-};
-
-const badgeDeaf = {
-    ...badgeBase,
-    background: "#fbbf24"
-};

@@ -48,6 +48,7 @@ export default function CreateChannelModal({ serverId, createChannel }) {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="general"
+                    className="input"
                     style={inputStyle}
                 />
 
@@ -55,6 +56,7 @@ export default function CreateChannelModal({ serverId, createChannel }) {
                 <select
                     value={type}
                     onChange={(e) => setType(e.target.value)}
+                    className="input"
                     style={inputStyle}
                 >
                     <option value="text">Text Channel</option>
@@ -80,14 +82,8 @@ export default function CreateChannelModal({ serverId, createChannel }) {
 }
 
 const inputStyle = {
-    width: "100%",
-    padding: 10,
     marginTop: 10,
-    marginBottom: 15,
-    background: "var(--bg-tertiary)",
-    borderRadius: 6,
-    border: "1px solid var(--border-color)",
-    color: "var(--text-primary)"
+    marginBottom: 15
 };
 
 const actions = {
@@ -98,7 +94,7 @@ const actions = {
 
 const primaryBtn = {
     padding: "10px 16px",
-    background: "#5865f2",
+    background: "var(--accent)",
     borderRadius: 6,
     border: "none",
     cursor: "pointer",

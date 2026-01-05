@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { getServerBans, unbanMember } from "../../api/serverMembers";
 import { useAppState } from "../../context/AppStateContext";
@@ -25,44 +24,45 @@ export default function BanList() {
     }, [selectedServer]);
 
     return (
-        <div style={{ padding: 4 }}>
-            <h2 style={{ marginBottom: 12 }}>Banned Users</h2>
+        <div className="ban-list">
+            <h2 className="ban-list-title">Banned Users</h2>
 
-            {loading && <div style={{ color: "var(--text-secondary)" }}>Loading...</div>}
+            {loading && <div className="ban-list-muted">Loading...</div>}
             {!loading && bans.length === 0 && (
-                <div style={{ color: "var(--text-secondary)" }}>No bans.</div>
+                <div className="ban-list-muted">No bans.</div>
             )}
 
-            {bans.map((b) => (
+            {bans.map((b) => {
+                const target = b.user || {};
+                const displayName = target.displayName || target.userName || "Unknown";
+                const userGuid = target.userGuid;
+                return (
                 <div
-                    key={b.userGuid}
-                    style={{
-                        padding: 10,
-                        marginBottom: 8,
-                        background: "var(--bg-tertiary)",
-                        borderRadius: 6,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        border: `1px solid var(--border-color)`
-                    }}
+                    key={b.banGuid || userGuid}
+                    className="ban-list-item"
                 >
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span style={{ color: "var(--text-primary)" }}>{b.displayName || b.userName}</span>
-                        <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>{b.userName}</span>
+                    <div className="ban-list-info">
+                        <span className="ban-list-name">{displayName}</span>
+                        <span className="ban-list-username">{target.userName}</span>
+                        {b.reason && (
+                            <span className="ban-list-username">
+                                Reason: {b.reason}
+                            </span>
+                        )}
                     </div>
                     <button
-                        style={btnConfirm}
+                        className="button"
                         onClick={() => {
                             if (!selectedServer) return;
+                            if (!userGuid) return;
                             openOverlay("confirm", {
                                 component: (
                                     <ConfirmModal
                                         title="Unban user"
-                                        message={`Unban ${b.displayName || b.userName}?`}
+                                        message={`Unban ${displayName}?`}
                                         confirmLabel="Unban"
                                         onConfirm={async () => {
-                                            await unbanMember(selectedServer.serverGuid, { userGuid: b.userGuid });
+                                            await unbanMember(selectedServer.serverGuid, { userGuid });
                                             const fresh = await getServerBans(selectedServer.serverGuid);
                                             setBans(fresh || []);
                                             closeOverlay();
@@ -77,16 +77,8 @@ export default function BanList() {
                         Unban
                     </button>
                 </div>
-            ))}
+                );
+            })}
         </div>
     );
 }
-
-const btnConfirm = {
-    padding: "6px 10px",
-    background: "#43b581",
-    border: "none",
-    borderRadius: 4,
-    cursor: "pointer",
-    color: "white",
-};

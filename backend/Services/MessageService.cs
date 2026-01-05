@@ -149,10 +149,7 @@ namespace backend.Services
             }
             if (message.UserGuid != userGuid)
             {
-                if (!await _userService.HasChannelPermission(userGuid, message.ChannelGuid, AppPermissions.EDIT_MESSAGES))
-                {
-                    throw new Exception("User does not have permission to edit this message.");
-                }
+                throw new Exception("Only the message author can edit this message.");
             }
 
             message.EncryptedContent = _encryptionService.EncryptMessage(message.ChannelGuid,dto.NewContent);
@@ -230,7 +227,7 @@ namespace backend.Services
 
             _db.Messages.Remove(message);
             await _db.SaveChangesAsync();
-            // Notify channel about the deleted message
+            
             await _hubContext.Clients.Group($"channel-{message.ChannelGuid}")
             .SendAsync("MessageDeleted", new
             {
@@ -282,9 +279,72 @@ namespace backend.Services
 
             await _db.SaveChangesAsync();
 
+            var updatedMessage = await _db.Messages
+                .Include(m => m.User)
+                .Include(m => m.MessageAttachments)
+                .FirstOrDefaultAsync(m => m.MessageGuid == messageGuid, ct);
+
+            if (updatedMessage != null)
+            {
+                var response = MapToResponse(updatedMessage);
+                await _hubContext.Clients.Group($"channel-{updatedMessage.ChannelGuid}")
+                    .SendAsync("MessageEdited", response);
+            }
         }
 
-        public async Task<List<MessageResponseDto>> SearchAsync(Guid channelGuid, string query, Guid userGuid, int limit = 20, double minScore = 0.50)
+        public async Task<bool> RemoveAttachmentAsync(Guid messageGuid, Guid attachmentGuid, Guid userGuid, CancellationToken ct = default)
+        {
+            var attachment = await _db.Attachments
+                .Include(a => a.Messages)
+                .FirstOrDefaultAsync(a => a.AttachementGuid == attachmentGuid && a.MessageGuid == messageGuid, ct);
+
+            if (attachment == null)
+            {
+                throw new Exception("Attachment not found.");
+            }
+
+            var message = attachment.Messages;
+            if (!await _userService.IsChannelMember(userGuid, message.ChannelGuid))
+            {
+                throw new UnauthorizedAccessException();
+            }
+
+            if (message.UserGuid != userGuid)
+            {
+                throw new Exception("Only the message author can remove attachments.");
+            }
+
+            var storageKey = attachment.AttachementKey;
+            _db.Attachments.Remove(attachment);
+            await _db.SaveChangesAsync(ct);
+
+           
+            try
+            {
+                await _storageService.DeleteAsync(storageKey, ct);
+            }
+            catch
+            {
+               
+            }
+
+            
+            var updatedMessage = await _db.Messages
+                .Include(m => m.User)
+                .Include(m => m.MessageAttachments)
+                .FirstOrDefaultAsync(m => m.MessageGuid == messageGuid, ct);
+
+            if (updatedMessage != null)
+            {
+                var response = MapToResponse(updatedMessage);
+                await _hubContext.Clients.Group($"channel-{updatedMessage.ChannelGuid}")
+                    .SendAsync("MessageEdited", response);
+            }
+
+            return true;
+        }
+
+        public async Task<List<MessageResponseDto>> SearchAsync(Guid channelGuid, string query, Guid userGuid, int limit = 20 )
         {
             if (string.IsNullOrWhiteSpace(query))
             {
@@ -295,6 +355,7 @@ namespace backend.Services
                 throw new Exception("Not a member");
 
             limit = Math.Clamp(limit, 1, 50);
+            double minScore = 0.78;
             minScore = Math.Clamp(minScore, 0.0, 1.0);
             var maxDistance = 1.0 - minScore;
 

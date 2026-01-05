@@ -52,10 +52,15 @@ namespace backend.Services
 
         public async Task<AuthResponseDto> Login(LoginRequestDto dto)
         {
-            var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email || u.UserName == dto.UserName);
+            var email = dto.Email?.Trim().ToLowerInvariant();
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email || u.UserName == dto.UserName);
             if (user == null)
             {
                 throw new UnauthorizedAccessException("Invalid credentials.");
+            }
+            if (user.IsDeleted)
+            {
+                throw new UnauthorizedAccessException("Account deleted.");
             }
             if(!VerifyPassword(dto.Password, user.PasswordHash, user.PasswordSalt))
             {
@@ -73,6 +78,11 @@ namespace backend.Services
                     t.Token == token &&
                     !t.IsRevoked &&
                     t.ExpiresAt > DateTime.UtcNow);
+
+            if (row?.User?.IsDeleted == true)
+            {
+                return null;
+            }
 
             return row?.User;
         }
@@ -93,22 +103,38 @@ namespace backend.Services
         }
         public async Task<AuthResponseDto> Register(RegisterRequestDto dto)
         {
-            if(await _db.Users.AnyAsync(u => u.Email == dto.Email || u.UserName == dto.UserName))
+            var email = dto.Email.Trim().ToLowerInvariant();
+            var userName = dto.UserName.Trim();
+            var displayName = dto.DisplayName.Trim();
+
+            if(await _db.Users.AnyAsync(u => u.Email == email || u.UserName == userName))
             {
                 throw new InvalidOperationException("User with the same email or username already exists.");
             }
+
+            var whitelistExists = await _db.RegistrationWhitelist.AnyAsync();
+            var whitelisted = await _db.RegistrationWhitelist.AnyAsync(w => w.Email == email);
+
+            if (whitelistExists && !whitelisted)
+            {
+                throw new UnauthorizedAccessException("Registration is restricted. Your email is not whitelisted.");
+            }
+
+            bool makeSystemAdmin = !await _db.Users.AnyAsync(u => u.IsSystemAdmin);
+
             var (hash, salt) = HashPassword(dto.Password);
             Guid userGuid = Guid.NewGuid();
             var user = new Users
             {
                 UserGuid = userGuid,
-                DisplayName = dto.DisplayName,
-                UserName = dto.UserName,
-                Email = dto.Email,
+                DisplayName = displayName,
+                UserName = userName,
+                Email = email,
                 PasswordHash = hash,
                 PasswordSalt = salt,
                 AvatarKey = null,
                 IsDeleted = false,
+                IsSystemAdmin = makeSystemAdmin,
                 CreatedAt = DateTime.UtcNow,
                 Settings = new UserSettings
                 {
@@ -188,6 +214,125 @@ namespace backend.Services
         {
             var hash = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(password + storedSalt)));
             return hash == storedHash;
+        }
+
+        public async Task DeleteAccount(Guid userGuid, string password)
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserGuid == userGuid);
+            if (user == null)
+            {
+                throw new UnauthorizedAccessException("User not found.");
+            }
+            if (user.IsDeleted)
+            {
+                throw new InvalidOperationException("Account already deleted.");
+            }
+            if (!VerifyPassword(password, user.PasswordHash, user.PasswordSalt))
+            {
+                throw new UnauthorizedAccessException("Invalid password.");
+            }
+
+            var tokens = await _db.RefreshTokens
+                .Where(t => t.UserGuid == userGuid && !t.IsRevoked)
+                .ToListAsync();
+            foreach (var token in tokens)
+            {
+                token.IsRevoked = true;
+                token.RevokedAt = DateTime.UtcNow;
+            }
+
+            var voiceStates = _db.VoiceStates.Where(v => v.UserGuid == userGuid);
+            _db.VoiceStates.RemoveRange(voiceStates);
+
+            var friendships = _db.Friendships
+                .Where(f => f.RequesterGuid == userGuid || f.AddresseeGuid == userGuid);
+            _db.Friendships.RemoveRange(friendships);
+
+            var servers = await _db.Servers
+                .Where(s => s.Members.Any(m => m.UserGuid == userGuid))
+                .ToListAsync();
+
+            foreach (var server in servers)
+            {
+                var isOwner = server.OwnerGuid == userGuid;
+
+                var roles = _db.ServerUserRoles
+                    .Where(r => r.ServerGuid == server.ServerGuid && r.UserGuid == userGuid);
+                _db.ServerUserRoles.RemoveRange(roles);
+
+                var membership = await _db.ServerMembers
+                    .FirstOrDefaultAsync(m => m.ServerGuid == server.ServerGuid && m.UserGuid == userGuid);
+                if (membership != null)
+                {
+                    _db.ServerMembers.Remove(membership);
+                }
+
+                if (!isOwner)
+                {
+                    continue;
+                }
+
+                var candidate = await _db.ServerUserRoles
+                    .Where(ur => ur.ServerGuid == server.ServerGuid && ur.UserGuid != userGuid)
+                    .Select(ur => new
+                    {
+                        ur.UserGuid,
+                        Position = ur.Role.IsDefault ? int.MaxValue : ur.Role.Position
+                    })
+                    .GroupBy(x => x.UserGuid)
+                    .Select(g => new { UserGuid = g.Key, Position = g.Min(x => x.Position) })
+                    .OrderBy(x => x.Position)
+                    .FirstOrDefaultAsync();
+
+                var newOwnerGuid = candidate?.UserGuid ?? await _db.ServerMembers
+                    .Where(m => m.ServerGuid == server.ServerGuid && m.UserGuid != userGuid)
+                    .Select(m => m.UserGuid)
+                    .FirstOrDefaultAsync();
+
+                if (newOwnerGuid == Guid.Empty)
+                {
+                    _db.Servers.Remove(server);
+                    continue;
+                }
+
+                server.OwnerGuid = newOwnerGuid;
+
+                var ownerRoleGuid = await _db.ServerRoles
+                    .Where(r => r.ServerGuid == server.ServerGuid && !r.IsDefault && r.RoleName.ToLower() == "owner")
+                    .Select(r => r.RoleGuid)
+                    .FirstOrDefaultAsync();
+
+                if (ownerRoleGuid != Guid.Empty)
+                {
+                    bool hasOwnerRole = await _db.ServerUserRoles.AnyAsync(ur =>
+                        ur.ServerGuid == server.ServerGuid &&
+                        ur.UserGuid == newOwnerGuid &&
+                        ur.RoleGuid == ownerRoleGuid);
+                    if (!hasOwnerRole)
+                    {
+                        _db.ServerUserRoles.Add(new ServerUserRoles
+                        {
+                            ServerGuid = server.ServerGuid,
+                            UserGuid = newOwnerGuid,
+                            RoleGuid = ownerRoleGuid,
+                            AddedAt = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+
+            user.IsDeleted = true;
+            user.DeletedAt = DateTime.UtcNow;
+            user.Status = "offline";
+            user.DisplayName = "Deleted user";
+            user.UserName = $"deleted-{user.UserGuid:N}";
+            user.Email = $"deleted-{user.UserGuid:N}@example.invalid";
+            user.AvatarKey = null;
+            var (hash, salt) = HashPassword(Guid.NewGuid().ToString("N"));
+            user.PasswordHash = hash;
+            user.PasswordSalt = salt;
+
+            await _db.SaveChangesAsync();
         }
     }
 }

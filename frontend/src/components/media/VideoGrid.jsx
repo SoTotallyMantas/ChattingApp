@@ -6,8 +6,14 @@ export default function VideoGrid({ tiles }) {
     const { user } = useAuth();  
     const myId = user?.userGuid; 
 
+    if (!tiles || tiles.length === 0) {
+        return null;
+    }
+
     const count = tiles.length;
-    const size = Math.ceil(Math.sqrt(count));  
+    const layoutCount = Math.max(1, count);
+    const columns = Math.ceil(Math.sqrt(layoutCount));
+    const rows = Math.ceil(layoutCount / columns);
 
    
     const mergedTiles = tiles.map(t => {
@@ -18,17 +24,16 @@ export default function VideoGrid({ tiles }) {
         };
     });
 
+    const gridStyle = {
+        "--video-grid-columns": String(columns),
+        "--video-grid-rows": String(rows)
+    };
+
     return (
         <div
-            style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${size}, 1fr)`,
-                gridTemplateRows: `repeat(${size}, 1fr)`,
-                width: "100%",
-                height: "100%",
-                gap: "4px",
-                padding: "4px"
-            }}
+            className="video-grid"
+            data-count={count}
+            style={gridStyle}
         >
             {mergedTiles.map(t => (
                 <video
@@ -38,17 +43,7 @@ export default function VideoGrid({ tiles }) {
                     autoPlay
                     playsInline
                     muted={t.id === myId || t.id === "local"}  
-                    style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        background: "black",
-                        borderRadius: "6px",
-                        border: t.isSpeaking
-                            ? "3px solid #43b581"  
-                            : "3px solid transparent",
-                        transition: "border 0.1s ease"
-                    }}
+                    className={`video-grid-tile ${t.isSpeaking ? "video-grid-tile--speaking" : ""}`}
                 />
             ))}
         </div>

@@ -5,15 +5,21 @@ import Button from "../../common/Button";
 import { useToast } from "../../context/ToastContext";
 import RolesApi from "../../api/serverRoles";
 import PermissionSelector from "./PermissionSelector";
+import { useAppState } from "../../context/AppStateContext";
 
 export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
     const [name, setName] = useState(role.roleName);
-    const [color, setColor] = useState(role.color || "#5865f2");
+    const [color, setColor] = useState(role.color || "#3b82f6");
     const [position, setPosition] = useState(role.position);
     const [permissions, setPermissions] = useState(
         role.permissions.map(p => p.permissionGuid)
     );
     const [allPermissions, setAllPermissions] = useState([]);
+    const { selectedServer } = useAppState();
+    const allowedPermissions = selectedServer?.permissions || [];
+    const lockedPermissions = permissions.filter(
+        (p) => allowedPermissions.length > 0 && !allowedPermissions.includes(p)
+    );
 
     const toast = useToast();
 
@@ -41,9 +47,18 @@ export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
                 position,
             });
 
+            const safePermissions = Array.from(
+                new Set([
+                    ...lockedPermissions,
+                    ...permissions.filter(
+                        (p) => allowedPermissions.length === 0 || allowedPermissions.includes(p)
+                    )
+                ])
+            );
+
             await RolesApi.updateRolePermissions(serverId, roleGuid, {
                 roleId: role.roleGuid,
-                permissionsGuid: permissions,
+                permissionsGuid: safePermissions,
             });
 
             toast.show("success", "Role updated.");
@@ -63,7 +78,7 @@ export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
                 <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    style={input}
+                    className="input"
                 />
 
                 <label>Color</label>
@@ -71,24 +86,26 @@ export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
                     type="color"
                     value={color}
                     onChange={(e) => setColor(e.target.value)}
-                    style={{ ...input, padding: 4, height: 40 }}
+                    className="input role-form-color"
                 />
 
                 <label>Position</label>
                 <input
                     type="number"
                     value={position}
-                onChange={(e) => setPosition(Number(e.target.value))}
-                style={input}
-            />
+                    onChange={(e) => setPosition(Number(e.target.value))}
+                    className="input"
+                />
 
             <PermissionSelector
                 permissions={allPermissions}
                 selected={permissions}
+                allowedPermissions={allowedPermissions}
+                lockedPermissions={lockedPermissions}
                 onChange={setPermissions}
             />
 
-                <div style={actions}>
+                <div className="role-form-actions">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button type="submit">Save</Button>
                 </div>
@@ -96,20 +113,3 @@ export default function EditRoleModal({ serverId, role, onClose, onUpdated }) {
         </Modal>
     );
 }
-
-const input = {
-    width: "100%",
-    padding: 10,
-    marginTop: 10,
-    marginBottom: 15,
-    background: "var(--bg-tertiary)",
-    border: "1px solid var(--border-color)",
-    borderRadius: 6,
-    color: "var(--text-primary)"
-};
-
-const actions = {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-};

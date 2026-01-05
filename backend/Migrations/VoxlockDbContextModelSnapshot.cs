@@ -89,6 +89,9 @@ namespace backend.Migrations
                     b.Property<Guid>("AddresseeGuid")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("BlockedByGuid")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -248,6 +251,9 @@ namespace backend.Migrations
                     b.HasKey("WhitelistGuid");
 
                     b.HasIndex("AddedBy");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
 
                     b.ToTable("RegistrationWhitelist");
                 });
@@ -511,6 +517,9 @@ namespace backend.Migrations
                         .HasColumnType("text");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSystemAdmin")
                         .HasColumnType("boolean");
 
                     b.Property<string>("PasswordHash")

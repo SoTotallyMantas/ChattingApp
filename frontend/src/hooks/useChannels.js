@@ -7,6 +7,7 @@ import {
     apiUpdateChannel,
     apiDeleteChannel
 } from "../api/channels";
+import { onSignalREvent, removeSignalREvent } from "../signalr";
 
 export function useChannels(serverGuid) {
     const [channels, setChannels] = useState([]);
@@ -53,6 +54,17 @@ export function useChannels(serverGuid) {
    
     useEffect(() => {
         loadChannels();
+    }, [serverGuid]);
+
+    useEffect(() => {
+        if (!serverGuid) return;
+        const handleChannelsUpdated = (payload) => {
+            const incomingServer = payload?.serverGuid ?? payload?.ServerGuid;
+            if (!incomingServer || incomingServer !== serverGuid) return;
+            loadChannels();
+        };
+        onSignalREvent("ServerChannelsUpdated", handleChannelsUpdated);
+        return () => removeSignalREvent("ServerChannelsUpdated", handleChannelsUpdated);
     }, [serverGuid]);
 
     return {

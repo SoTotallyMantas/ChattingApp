@@ -1,34 +1,27 @@
 import { useOverlay } from "../../context/OverlayContext";
-import { useMessages } from "../../context/MessagesContext";
 
-export default function MessageMenu({ id, x, y, deleteMessage, canEdit = true, canDelete = true }) {
+export default function MessageMenu({
+    id,
+    message,
+    x,
+    y,
+    deleteMessage,
+    canEdit = true,
+    canDelete = true,
+    startReply
+}) {
     const { openOverlay, closeOverlay } = useOverlay();
-    const { startReply, messages } = useMessages();
-    const target = messages?.find(m => m.messageGuid === id);
 
     return (
         <div
             data-overlay-root="true"
-            style={{
-                position: "fixed",
-                top: y,
-                left: x,
-                background: "var(--bg-secondary)",
-                border: `1px solid var(--border-color)`,
-                borderRadius: 6,
-                padding: "6px 0",
-                width: 170,
-                zIndex: 999999,
-                boxShadow: "0 4px 14px rgba(0,0,0,0.45)",
-                userSelect: "none",
-            }}
+            className="message-menu"
+            style={{ top: y, left: x }}
         >
             <MenuItem
                 label="Reply"
                 onClick={() => {
-                    if (target) {
-                        startReply(target);
-                    }
+                    if (startReply && message) startReply(message);
                     closeOverlay();
                 }}
             />
@@ -61,14 +54,7 @@ function MenuItem({ label, onClick, danger }) {
     return (
         <div
             onClick={onClick}
-            style={{
-                padding: "8px 12px",
-                fontSize: 14,
-                cursor: "pointer",
-                color: danger ? "#ff4f4f" : "var(--text-primary)",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            className={`channel-row${danger ? " channel-row--danger" : ""}`}
         >
             {label}
         </div>

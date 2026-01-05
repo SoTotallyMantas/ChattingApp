@@ -12,6 +12,7 @@ namespace backend.DTO.UserDtos
         public required string DisplayName { get; set; }
         public required string UserName { get; set; }
         public string? AvatarKey { get; set; }
+        public string? Presence { get; set; }
     }
 }
 

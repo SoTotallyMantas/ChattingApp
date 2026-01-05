@@ -1,26 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { uploadAvatar } from "../../api/userSettings";
-import { changePassword } from "../../api/auth";
+import { changePassword, deleteAccount } from "../../api/auth";
 import { useUserSettings } from "../../hooks/useUserSettings";
 import { useAuth } from "../../context/AuthContext";
 import { useOverlay } from "../../context/OverlayContext";
 import Button from "../../common/Button";
 import { getAvatarSrc } from "../../utils/avatar";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
+import ConfirmModal from "../../common/ConfirmModal";
 
-export default function UserProfileMenu({ close }) {
-    const { logout, user, setUser } = useAuth?.() || {};
-    const { closeOverlay } = useOverlay?.() || {};
+export default function UserProfileMenu({ close, user: targetUser }) {
+    const { logout, user: authUser, setUser } = useAuth?.() || {};
+    const { closeOverlay, openOverlay } = useOverlay?.() || {};
     const { setTheme } = useTheme?.() || {};
+    const toast = useToast();
+
+    const isSelf = !targetUser || (authUser && targetUser?.userGuid === authUser.userGuid);
+    const profileUser = isSelf ? authUser : targetUser;
 
     const safeUser = useMemo(
         () =>
-            user || {
+            profileUser || {
                 userGuid: "Unknown",
                 displayName: "Unknown",
                 userName: "Unknown"
             },
-        [user]
+        [profileUser]
     );
 
     const fileInputRef = useRef(null);
@@ -81,65 +87,75 @@ export default function UserProfileMenu({ close }) {
     const avatarSrc = avatarPreview || getAvatarSrc(safeUser);
     const avatarInitial = (safeUser.displayName || safeUser.userName || "U").charAt(0).toUpperCase();
 
+    if (!isSelf) {
+        return (
+            <div
+                data-overlay-root="true"
+                className="user-profile-menu"
+            >
+                <div className="user-profile-header">
+                    <h2 className="user-profile-title">User Profile</h2>
+                    <button
+                        onClick={close || closeOverlay || (() => {})}
+                        className="user-profile-close"
+                        aria-label="Close"
+                        type="button"
+                    >
+                        x
+                    </button>
+                </div>
+
+                <div className="user-profile-summary user-profile-summary--compact">
+                    <div className="avatar avatar--lg">
+                        {avatarSrc ? (
+                            <img
+                                src={avatarSrc}
+                                alt=""
+                                className="avatar"
+                            />
+                        ) : (
+                            avatarInitial
+                        )}
+                    </div>
+
+                    <div>
+                        <div className="user-profile-name">
+                            {safeUser.displayName || safeUser.userName || safeUser.userGuid}
+                        </div>
+
+                        <div className="user-profile-username">
+                            {safeUser.userName || safeUser.userGuid}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div
             data-overlay-root="true"
-            style={{
-                width: 520,
-                maxWidth: "90vw",
-                background: "var(--bg-secondary, #2f3136)",
-                borderRadius: 12,
-                padding: 20,
-                color: "var(--text-primary, #fff)",
-                boxShadow: "0 16px 50px rgba(0,0,0,0.5)"
-            }}
+            className="user-profile-menu"
         >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <h2 style={{ margin: 0, fontSize: 18 }}>User Profile</h2>
+            <div className="user-profile-header">
+                <h2 className="user-profile-title">User Profile</h2>
                 <button
                     onClick={handleClose}
-                    style={{
-                        background: "transparent",
-                        border: "1px solid var(--border-color, #444)",
-                        color: "var(--text-secondary, #ccc)",
-                        cursor: "pointer",
-                        fontSize: 16,
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
-                        lineHeight: "16px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                    }}
+                    className="user-profile-close"
                     aria-label="Close"
                     type="button"
                 >
-                    ×
+                    x
                 </button>
             </div>
 
-            <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 16 }}>
-                <div
-                    style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: "50%",
-                        background: "var(--bg-tertiary)",
-                        color: "var(--text-primary)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 800,
-                        fontSize: 20,
-                        overflow: "hidden"
-                    }}
-                >
+            <div className="user-profile-summary">
+                <div className="avatar avatar--lg">
                     {avatarSrc ? (
                         <img
                             src={avatarSrc}
                             alt=""
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            className="avatar"
                         />
                     ) : (
                         avatarInitial
@@ -147,54 +163,39 @@ export default function UserProfileMenu({ close }) {
                 </div>
 
                 <div>
-                    <div style={{ fontSize: 18, fontWeight: 700 }}>
+                    <div className="user-profile-name">
                         {safeUser.displayName || safeUser.userName || safeUser.userGuid}
                     </div>
 
-                    <div style={{ fontSize: 13, opacity: 0.7 }}>
+                    <div className="user-profile-username">
                         {safeUser.userName || safeUser.userGuid}
                     </div>
                 </div>
             </div>
 
             <div
-                style={{
-                    borderTop: "1px solid var(--border-color, #444)",
-                    paddingTop: 16,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12
-                }}
+                className="user-profile-body"
             >
-                <label style={label}>Display name</label>
+                <label className="user-profile-label">Display name</label>
                 <input
                     type="text"
                     value={form.displayName}
                     onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                    style={input}
+                    className="input "
                     placeholder="How others see you"
                 />
 
-                <label style={label}>Theme</label>
+                <label className="user-profile-label">Theme</label>
                 <select
                     value={form.theme}
                     onChange={(e) => setForm({ ...form, theme: e.target.value })}
-                    style={select}
+                    className="input user-profile-select"
                 >
                     <option value="light">Light</option>
                     <option value="dark">Dark</option>
                 </select>
 
-                <label style={{ ...label, display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                        type="checkbox"
-                        checked={form.muteNotifications}
-                        onChange={(e) => setForm({ ...form, muteNotifications: e.target.checked })}
-                    />
-                    Mute notifications
-                </label>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div className="user-profile-actions">
                     <Button
                         variant="secondary"
                         onClick={() => fileInputRef.current?.click()}
@@ -205,18 +206,18 @@ export default function UserProfileMenu({ close }) {
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"
-                        style={{ display: "none" }}
+                        className="user-profile-hidden-file"
                         onChange={onPick}
                     />
                 </div>
 
                 {error && (
-                    <div style={{ color: "var(--danger, #f87171)", fontSize: 13 }}>
+                    <div className="user-profile-error">
                         Failed to load settings.
                     </div>
                 )}
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <div className="user-profile-footer-actions">
                     <Button
                         onClick={handleClose}
                         variant="secondary"
@@ -237,15 +238,15 @@ export default function UserProfileMenu({ close }) {
                                 });
                                 setForm((prev) => ({ ...prev, displayName: updated.displayName || trimmed }));
                                 setTheme?.(updated.theme);
-                                if (setUser && user) {
-                                    setUser({ ...user, displayName: updated.displayName || trimmed });
+                                if (setUser && authUser) {
+                                    setUser({ ...authUser, displayName: updated.displayName || trimmed });
                                 }
                             }
                             if (avatarPending && avatarFile) {
                                 try {
                                     const key = await uploadAvatar(avatarFile);
-                                    if (setUser && user && key) {
-                                        setUser({ ...user, avatarKey: key });
+                                    if (setUser && authUser && key) {
+                                        setUser({ ...authUser, avatarKey: key });
                                     }
                                     setAvatarFile(null);
                                     setAvatarPreview(null);
@@ -260,31 +261,35 @@ export default function UserProfileMenu({ close }) {
                     </Button>
                 </div>
 
-                <div style={{ borderTop: "1px solid var(--border-color, #444)", paddingTop: 12 }}>
-                    <label style={label}>Change password</label>
+                <div className="user-profile-section">
+                    <label className="user-profile-label">Change password</label>
                     <input
                         type="password"
                         placeholder="Current password"
                         value={pwd.current}
                         onChange={(e) => setPwd({ ...pwd, current: e.target.value })}
-                        style={input}
+                        className="input"
                     />
                     <input
                         type="password"
                         placeholder="New password"
                         value={pwd.next}
                         onChange={(e) => setPwd({ ...pwd, next: e.target.value })}
-                        style={input}
+                        className="input"
                     />
                     <input
                         type="password"
                         placeholder="Confirm new password"
                         value={pwd.confirm}
                         onChange={(e) => setPwd({ ...pwd, confirm: e.target.value })}
-                        style={input}
+                        className="input"
                     />
                     {pwdStatus && (
-                        <div style={{ color: pwdStatus.error ? "var(--danger, #f87171)" : "var(--accent, #22c55e)", fontSize: 13, marginBottom: 4 }}>
+                        <div
+                            className={`user-profile-status ${
+                                pwdStatus.error ? "user-profile-status--error" : "user-profile-status--success"
+                            }`}
+                        >
                             {pwdStatus.message}
                         </div>
                     )}
@@ -308,46 +313,58 @@ export default function UserProfileMenu({ close }) {
                                 setPwdStatus({ error: true, message: "Failed to change password." });
                             }
                         }}
-                        style={{ marginTop: 6 }}
                     >
                         Change password
                     </Button>
                 </div>
 
-                <div style={{ borderTop: "1px solid var(--border-color, #444)", paddingTop: 12 }}>
+                <div className="user-profile-section">
                     <Button
-                        variant="secondary"
+                        variant="danger"
                         onClick={logout}
-                        style={{ background: "var(--danger, #ef4444)", border: "none", color: "#fff" }}
                     >
                         Logout
+                    </Button>
+                </div>
+
+                <div className="user-profile-section">
+                    <Button
+                        className="danger-button"
+                        onClick={() =>
+                            openOverlay?.("confirm", {
+                                component: (
+                                    <ConfirmModal
+                                        title="Delete account"
+                                        message="This will delete your account and remove you from servers and friends. This action cannot be undone."
+                                        confirmLabel="Delete"
+                                        cancelLabel="Cancel"
+                                        variant="danger"
+                                        inputLabel="Password"
+                                        inputPlaceholder="Enter your password"
+                                        inputRequired
+                                        inputType="password"
+                                        onConfirm={async (password) => {
+                                            try {
+                                                await deleteAccount(password);
+                                                await logout?.();
+                                                window.location.href = "/login";
+                                            } catch (err) {
+                                                const message =
+                                                    err?.response?.data?.message ||
+                                                    err?.message ||
+                                                    "Failed to delete account.";
+                                                toast.show("error", message);
+                                            }
+                                        }}
+                                    />
+                                )
+                            })
+                        }
+                    >
+                        Delete account
                     </Button>
                 </div>
             </div>
         </div>
     );
 }
-
-const label = {
-    fontSize: 13,
-    color: "var(--text-primary, #fff)",
-    marginBottom: 4
-};
-
-const select = {
-    padding: "10px",
-    borderRadius: 8,
-    border: "1px solid var(--border-color, #444)",
-    background: "var(--bg-tertiary, #202225)",
-    color: "var(--text-primary, #fff)"
-};
-
-const input = {
-    width: "100%",
-    padding: "10px",
-    borderRadius: 8,
-    border: "1px solid var(--border-color, #444)",
-    background: "var(--bg-tertiary, #202225)",
-    color: "var(--text-primary, #fff)",
-    marginBottom: 8
-};

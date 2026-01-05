@@ -1,11 +1,16 @@
 import { createContext,useContext, useEffect, useState } from "react";
 import api, { setAccessToken as setGlobalAccessToken } from "../api/axios";
 import { apiLogout } from "../api/auth";
+import { onSignalREvent, removeSignalREvent } from "../signalr/index";
 
 const AuthContext = createContext();
 
 const parseToken = (token, avatarKeyOverride = null) => {
     const payload = JSON.parse(atob(token.split(".")[1]));
+    const isSystemAdmin =
+        payload.is_sys_admin === "true" ||
+        payload.is_sys_admin === true ||
+        payload.is_sys_admin === 1;
     return {
         userGuid:
             payload["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ||
@@ -14,6 +19,7 @@ const parseToken = (token, avatarKeyOverride = null) => {
         email: payload.email,
         displayName: payload.DisplayName || payload.displayName || payload.userName,
         avatarKey: avatarKeyOverride || payload.AvatarKey || payload.avatarKey || null,
+        isSystemAdmin
     };
 };
 
@@ -58,10 +64,27 @@ export function AuthProvider({ children }) {
         init();
     }, []);
 
+    useEffect(() => {
+        const handleProfileUpdated = (payload) => {
+            const userGuid = payload?.userGuid;
+            if (!userGuid) return;
+            setUser((prev) => {
+                if (!prev || prev.userGuid !== userGuid) return prev;
+                return {
+                    ...prev,
+                    displayName: payload.displayName ?? prev.displayName,
+                    avatarKey: payload.avatarKey ?? prev.avatarKey
+                };
+            });
+        };
+        onSignalREvent("UserProfileUpdated", handleProfileUpdated);
+        return () => removeSignalREvent("UserProfileUpdated", handleProfileUpdated);
+    }, []);
+
     const logout = async () => {
         try {
             await apiLogout();
-        } catch { /* ignore */ }
+        } catch { err }
         setToken(null);
         setUser(null);
     };

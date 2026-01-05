@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { fetchMyServerPermissions } from "../api/serverPermissions";
 
 const AppStateContext = createContext();
 
@@ -9,22 +10,31 @@ export const AppStateProvider = ({ children }) => {
     const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
     const [serverContextMenu, setServerContextMenu] = useState(null);
     const [membersSidebarOpen, setMembersSidebarOpen] = useState(true);
+    const [serverPermissions, setServerPermissions] = useState([]);
 
     useEffect(() => {
-        if (!selectedServer) return;
-
-    
-        if (selectedChannel && selectedChannel.serverGuid === selectedServer.serverGuid) return;
-
-        
-        const firstText = selectedServer.channels?.find(
-            c => c.channelType === "text"
-        );
-
-        if (firstText) {
-            setSelectedChannel(firstText);
+        if (!selectedServer) {
+            if (selectedChannel) {
+                setSelectedChannel(null);
+            }
+            return;
         }
-    }, [selectedServer]);
+
+        if (selectedChannel && selectedChannel.serverGuid !== selectedServer.serverGuid) {
+            setSelectedChannel(null);
+            return;
+        }
+
+        if (!selectedChannel) {
+            const firstText = selectedServer.channels?.find(
+                c => c.channelType === "text"
+            );
+
+            if (firstText) {
+                setSelectedChannel(firstText);
+            }
+        }
+    }, [selectedServer, selectedChannel]);
 
     useEffect(() => {
         
@@ -33,14 +43,60 @@ export const AppStateProvider = ({ children }) => {
         }
     }, [selectedServer]);
 
+    const loadServerPermissions = async (serverGuidOverride = null) => {
+        const serverGuid = serverGuidOverride || selectedServer?.serverGuid;
+        if (!serverGuid) {
+            setServerPermissions([]);
+            return;
+        }
+
+        try {
+            const permissions = await fetchMyServerPermissions(serverGuid);
+            setServerPermissions(Array.isArray(permissions) ? permissions : []);
+        } catch {
+            setServerPermissions([]);
+        }
+    };
+
+    useEffect(() => {
+        let active = true;
+
+        const refresh = async () => {
+            if (!selectedServer?.serverGuid) {
+                if (active) setServerPermissions([]);
+                return;
+            }
+            try {
+                const permissions = await fetchMyServerPermissions(selectedServer.serverGuid);
+                if (active) {
+                    setServerPermissions(Array.isArray(permissions) ? permissions : []);
+                }
+            } catch {
+                if (active) setServerPermissions([]);
+            }
+        };
+
+        refresh();
+
+        return () => {
+            active = false;
+        };
+    }, [selectedServer?.serverGuid]);
+
+    const selectedServerWithPermissions = selectedServer
+        ? { ...selectedServer, permissions: serverPermissions }
+        : null;
+
     return (
         <AppStateContext.Provider
             value={{
-                selectedServer, setSelectedServer,
+                selectedServer: selectedServerWithPermissions,
+                setSelectedServer,
                 selectedChannel, setSelectedChannel,
                 serverSettingsOpen, setServerSettingsOpen,
                 serverContextMenu, setServerContextMenu,
-                membersSidebarOpen, setMembersSidebarOpen
+                membersSidebarOpen, setMembersSidebarOpen,
+                refreshServerPermissions: loadServerPermissions
             }}
         >
             {children}

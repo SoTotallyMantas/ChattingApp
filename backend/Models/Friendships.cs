@@ -11,6 +11,7 @@ namespace backend.Models
 
         public Users Requester { get; set; } = default!;
         public Users Addressee { get; set; } = default!;
+        public Guid? BlockedByGuid { get; set; }
     }
 
     public static class FriendshipStatuses

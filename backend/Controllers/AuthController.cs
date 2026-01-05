@@ -100,5 +100,17 @@ namespace backend.Controllers
             return Ok(new { message = "Password changed. Please log in again." });
         }
 
+        [Authorize]
+        [HttpPost("delete-account")]
+        public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountRequestDto dto)
+        {
+            Guid userGuid = User.GetUserGuid();
+            await _auth.DeleteAccount(userGuid, dto.Password);
+
+            Response.Cookies.Delete("refreshToken");
+
+            return Ok(new { message = "Account deleted." });
+        }
+
     }
 }

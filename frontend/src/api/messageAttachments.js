@@ -7,7 +7,11 @@ export async function uploadAttachment(messageGuid, file) {
     const url = `/messages/${messageGuid}/attachemnts`;
 
     return api.post(url, form, {
-        params: { messageGuid },
-        headers: { "Content-Type": "multipart/form-data" }
+        params: { messageGuid }
     });
+}
+
+export async function deleteAttachment(messageGuid, attachmentGuid) {
+    const url = `/messages/${messageGuid}/attachments/${attachmentGuid}`;
+    return api.delete(url);
 }

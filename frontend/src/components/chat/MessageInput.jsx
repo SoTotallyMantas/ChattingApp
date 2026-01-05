@@ -19,7 +19,7 @@ export default function MessageInput() {
         const picked = Array.from(e.target.files || []);
         if (picked.length === 0) return;
         addFiles(picked);
-        
+
         e.target.value = "";
     };
 
@@ -111,133 +111,77 @@ export default function MessageInput() {
 
     const onDragLeave = () => setIsDragging(false);
 
+    const textareaClassName = isDragging
+        ? "message-input-textarea message-input-textarea--dragging"
+        : "message-input-textarea";
+
     return (
         <div
-            style={{
-                padding: 15,
-                borderTop: "1px solid var(--border-color)",
-                background: "var(--bg-secondary)"
-            }}
+            className="message-input"
             onDragOver={onDragOver}
             onDrop={onDrop}
             onDragLeave={onDragLeave}
         >
-            <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{
-                        borderRadius: 6,
-                        border: `1px solid var(--border-color)`,
-                        background: "var(--bg-primary)",
-                        color: "var(--text-primary)",
-                        padding: "6px 10px",
-                        cursor: "pointer",
-                        fontWeight: 600
-                    }}
-                >
-                    Attach
-                </button>
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    style={{ display: "none" }}
-                    onChange={onPick}
-                />
-            </div>
+            <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="message-input-file-input"
+                onChange={onPick}
+                style={{ display: "none" }}
+            />
 
             {replyTo && (
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        background: "var(--bg-primary)",
-                        border: `1px solid var(--border-color)`,
-                        marginBottom: 8
-                    }}
-                >
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                <div className="message-input-reply">
+                    <div className="message-input-reply-label">
                         Replying to
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div className="message-input-reply-content">
+                        <div className="message-input-reply-name">
                             {replyTo.displayName || replyTo.userName || "User"}
                         </div>
-                        <div style={{ color: "var(--text-secondary)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div className="message-input-reply-text">
                             {replyTo.content || "(no text)"}
                         </div>
                     </div>
                     <button
                         type="button"
                         onClick={clearReply}
-                        style={{
-                            border: "none",
-                            background: "transparent",
-                            color: "var(--text-secondary)",
-                            cursor: "pointer",
-                            fontWeight: 700,
-                            padding: "4px 6px"
-                        }}
+                        className="message-input-reply-cancel"
                         title="Cancel reply"
                     >
-                        ×
+                        X
                     </button>
                 </div>
             )}
 
             {files.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                <div className="message-input-files">
                     {files.map((f) => (
                         <div
                             key={f.name}
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                background: "var(--bg-primary)",
-                                border: `1px solid var(--border-color)`,
-                                color: "var(--text-primary)"
-                            }}
+                            className="message-input-file"
                         >
                             {previews[fileKey(f)] && (
                                 <img
                                     src={previews[fileKey(f)]}
                                     alt={f.name}
-                                    style={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 8,
-                                        objectFit: "cover",
-                                        border: `1px solid var(--border-color)`
-                                    }}
+                                    className="message-input-file-preview"
                                 />
                             )}
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                <span style={{ fontWeight: 600, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                                <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                            <div className="message-input-file-info">
+                                <span className="message-input-file-name">{f.name}</span>
+                                <span className="message-input-file-size">
                                     {Math.ceil(f.size / 1024)} KB
                                 </span>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => removeFile(f.name)}
-                                style={{
-                                    border: "none",
-                                    background: "transparent",
-                                    color: "var(--text-secondary)",
-                                    cursor: "pointer",
-                                    fontWeight: 700,
-                                    marginLeft: "auto"
-                                }}
+                                className="button"
                                 title="Remove file"
                             >
-                                ×
+                                X
                             </button>
                         </div>
                     ))}
@@ -250,27 +194,21 @@ export default function MessageInput() {
                 onKeyDown={onKey}
                 onPaste={onPaste}
                 placeholder="Message..."
-                style={{
-                    ...box,
-                    borderColor: isDragging ? "var(--accent)" : box.border,
-                    background: isDragging ? "var(--bg-hover)" : box.background
-                }}
+                className={textareaClassName}
             />
 
-            <Button onClick={send} style={{ marginTop: 10 }}>
-                Send
-            </Button>
+            <div className="actions-row message-input-actions">
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="button"
+                >
+                    Attach
+                </button>
+                <Button onClick={send} className="button">
+                    Send
+                </Button>
+            </div>
         </div>
     );
 }
-
-const box = {
-    width: "100%",
-    height: 60,
-    padding: 10,
-    borderRadius: 6,
-    border: "1px solid var(--border-color)",
-    resize: "none",
-    background: "var(--bg-primary)",
-    color: "var(--text-primary)"
-};

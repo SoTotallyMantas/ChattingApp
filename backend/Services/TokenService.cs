@@ -20,7 +20,8 @@ namespace backend.Services
             {
                 new Claim(ClaimTypes.NameIdentifier, user.UserGuid.ToString()),
                 new Claim("userName", user.UserName),
-                new Claim("DisplayName",user.DisplayName)
+                new Claim("DisplayName",user.DisplayName),
+                new Claim("is_sys_admin", user.IsSystemAdmin ? "true" : "false")
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtKey));

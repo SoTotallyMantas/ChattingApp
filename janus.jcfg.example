@@ -1,0 +1,42 @@
+general: {
+  daemonize     = false
+  interface     = "0.0.0.0"
+  log_to_stdout = true
+  debug_level   = 4
+}
+
+websockets: {
+  ws       = true
+  ws_port  = 8188
+  wss      = false
+  http     = false
+}
+
+rtp: {
+  port_range = "10000-10200"
+  mtu        = 1400
+}
+
+nat: {
+  stun_server  = "stun.l.google.com"
+  stun_port    = 19302
+  nice_lite    = true
+  stun_mapping = true
+}
+
+ice: {
+  full_trickle = true
+  ice_lite     = false
+  ice_timeout  = 120
+}
+
+plugins: {
+  audiobridge = true
+  videoroom   = true
+  textroom    = true
+  streaming   = true
+}
+
+events: {
+  broadcast = false
+}

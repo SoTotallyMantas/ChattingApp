@@ -1,8 +1,8 @@
-﻿import { memo, useEffect } from "react";
+import { memo, useEffect } from "react";
 import { useChannels } from "../hooks/useChannels";
 import { useAppState } from "../context/AppStateContext";
 import { useOverlay } from "../context/OverlayContext";
-import { useMediaState } from "../context/MediaContext";  
+import { useMediaState } from "../context/MediaContext";
 import VoiceUserList from "../components/voice/VoiceUserList";
 import VoiceChannelIcon from "../components/icons/VoiceChannelIcon";
 import ChatChannelIcon from "../components/icons/ChatChannelIcon";
@@ -11,23 +11,25 @@ export default function ChannelSidebar() {
     const { selectedServer, selectedChannel, setSelectedChannel } = useAppState();
     const { openOverlay } = useOverlay();
 
-    const { channels, createChannel } = useChannels(selectedServer?.serverGuid);
+    const { channels, createChannel, updateChannel, deleteChannel } = useChannels(selectedServer?.serverGuid);
     const mediaState = useMediaState();
     const {
         joinedChannel,
         joinVoice,
-        leaveVoice,
-        muteMic,
-        unmuteMic,
-        myState
+        leaveVoice
     } = mediaState;
-
-    const micMuted = myState?.micMuted;
 
     if (!selectedServer) return null;
 
     const sorted = [...(channels ?? [])].sort((a, b) => a.position - b.position);
     useEffect(() => {
+        if (selectedChannel) {
+            const stillExists = sorted.some(c => c.channelGuid === selectedChannel.channelGuid);
+            if (!stillExists) {
+                setSelectedChannel(null);
+                return;
+            }
+        }
         if (!selectedChannel && sorted.length > 0) {
             const firstText = sorted.find(c => c.channelType === "text");
             if (firstText) setSelectedChannel(firstText);
@@ -35,7 +37,7 @@ export default function ChannelSidebar() {
     }, [sorted, selectedChannel, setSelectedChannel]);
 
     return (
-        <div style={{ width: 250, height: "100%", background: "var(--bg-secondary)", padding: 10, borderRight: `1px solid var(--border-color)`, boxSizing: "border-box", overflowY: "auto" }}>
+        <div className="channel-sidebar">
             <Header
                 serverName={selectedServer.serverName}
                 serverGuid={selectedServer.serverGuid}
@@ -49,24 +51,22 @@ export default function ChannelSidebar() {
                     channel={channel}
                     selectedChannel={selectedChannel}
                     joinedChannel={joinedChannel}
-                    mediaState={mediaState}  
                     setSelectedChannel={setSelectedChannel}
                     joinVoice={joinVoice}
                     leaveVoice={leaveVoice}
-                    muteMic={muteMic}
-                    unmuteMic={unmuteMic}
-                    micMuted={micMuted}
                     openOverlay={openOverlay}
+                    updateChannel={updateChannel}
+                    deleteChannel={deleteChannel}
+                    createChannel={createChannel}
                 />
             ))}
         </div>
     );
 }
 
-
 const Header = memo(function Header({ serverName, serverGuid, createChannel, openOverlay }) {
     return (
-        <h3 style={{ color: "var(--text-primary)", display: "flex", justifyContent: "space-between", margin: "6px 0 12px" }}>
+        <h3 className="channel-sidebar-header">
             {serverName}
 
             <button
@@ -76,13 +76,8 @@ const Header = memo(function Header({ serverName, serverGuid, createChannel, ope
                         createChannel
                     })
                 }
-                style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "var(--text-primary)",
-                    cursor: "pointer",
-                    fontSize: 20
-                }}
+                className="channel-sidebar-create"
+                type="button"
             >
                 +
             </button>
@@ -94,20 +89,41 @@ const ChannelRow = memo(function ChannelRow({
     channel,
     selectedChannel,
     joinedChannel,
-    mediaState,
     setSelectedChannel,
     joinVoice,
     leaveVoice,
-    muteMic,
-    unmuteMic,
-    micMuted,
-    openOverlay
+    openOverlay,
+    updateChannel,
+    deleteChannel,
+    createChannel
 }) {
     const isSelected = selectedChannel?.channelGuid === channel.channelGuid;
     const isJoined = joinedChannel === channel.channelGuid;
+    const isActive = isSelected || (channel.channelType === "voice" && isJoined);
+
+    const rowClassName = [
+        "channel-row",
+        isActive ? "channel-row--active" : "",
+        isSelected && channel.channelType === "text" ? "channel-row--selected-text" : ""
+    ]
+        .filter(Boolean)
+        .join(" ");
+
+    const handleContextMenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openOverlay("channel-menu", {
+            channel,
+            x: e.clientX,
+            y: e.clientY,
+            updateChannel,
+            deleteChannel,
+            createChannel
+        });
+    };
 
     return (
-        <div style={{ marginBottom: 4 }}>
+        <div className="channel-row-wrap">
             <div
                 onClick={() => {
                     setSelectedChannel(channel);
@@ -115,20 +131,13 @@ const ChannelRow = memo(function ChannelRow({
                         joinVoice(channel.channelGuid);
                     }
                 }}
-                style={{
-                    padding: "6px 10px",
-                    cursor: "pointer",
-                    borderRadius: 4,
-                    color: isSelected || isJoined ? "var(--text-primary)" : "var(--text-secondary)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center"
-                }}
+                className={rowClassName}
+                onContextMenu={handleContextMenu}
             >
                 {channel.channelType === "text" && (
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                    <span className="channel-row-label">
                         <ChatChannelIcon size={14} />
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span className="channel-row-label-text">
                             {channel.channelName}
                         </span>
                     </span>
@@ -136,30 +145,22 @@ const ChannelRow = memo(function ChannelRow({
 
                 {channel.channelType === "voice" && (
                     <>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                        <span className="channel-row-label">
                             <VoiceChannelIcon size={14} />
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span className="channel-row-label-text">
                                 {channel.channelName}
                             </span>
                         </span>
 
                         {isJoined ? (
-                            <div style={{ display: "flex", gap: 6 }}>
-                                <button
-                                    onClick={e => {
-                                        e.stopPropagation();
-                                        micMuted ? unmuteMic() : muteMic();
-                                    }}
-                                >
-                                    {micMuted ? "Unmute" : "Mute"}
-                                </button>
-
+                            <div className="channel-row-actions">
                                 <button
                                     onClick={e => {
                                         e.stopPropagation();
                                         leaveVoice(channel.channelGuid);
                                     }}
-                                    style={inlineBtn}
+                                    className="button"
+                                    type="button"
                                 >
                                     Leave
                                 </button>
@@ -170,7 +171,8 @@ const ChannelRow = memo(function ChannelRow({
                                     e.stopPropagation();
                                     joinVoice(channel.channelGuid);
                                 }}
-                                style={inlineBtn}
+                                className="button"
+                                type="button"
                             >
                                 Join
                             </button>
@@ -180,19 +182,8 @@ const ChannelRow = memo(function ChannelRow({
             </div>
 
             {channel.channelType === "voice" && (
-                <VoiceUserList channelGuid={channel.channelGuid} openOverlay={openOverlay} />
+                <VoiceUserList channelGuid={channel.channelGuid} />
             )}
         </div>
     );
 });
-
-
-
-const inlineBtn = {
-    padding: "4px 8px",
-    borderRadius: 6,
-    border: `1px solid var(--border-color)`,
-    background: "var(--bg-tertiary)",
-    color: "var(--text-primary)",
-    cursor: "pointer"
-};

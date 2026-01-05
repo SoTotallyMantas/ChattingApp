@@ -11,6 +11,7 @@ const listeners = {
     UserDeafenedState: [],
     SpeakingState: [],
     VideoCandidate: [],
+    VoiceDisconnected: []
 };
 
 export function onUserEvent(type, handler) {
@@ -22,6 +23,10 @@ function emit(type, payload) {
     for (const fn of listeners[type]) fn(payload);
 }
 
+export function removeUserEvent(type, handler) {
+    if (!listeners[type]) return;
+    listeners[type] = listeners[type].filter((fn) => fn !== handler);
+}
 export function getUnifiedConnection() {
     if (conn) return conn;
 
@@ -39,6 +44,7 @@ export function getUnifiedConnection() {
     conn.on("UserDeafenedState", p => emit("UserDeafenedState", p));
     conn.on("SpeakingState", p => emit("SpeakingState", p));
     conn.on("VideoCandidate", p => emit("VideoCandidate", p));
+    conn.on("VoiceDisconnected", p => emit("VoiceDisconnected", p));
 
     conn.ensureStarted = async () => {
         if (conn.state === signalR.HubConnectionState.Connected) return;

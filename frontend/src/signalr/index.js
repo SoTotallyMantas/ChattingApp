@@ -7,7 +7,14 @@ const listeners = {
     MessageEdited: [],
     MessageDeleted: [],
     Reconnected: [],
-    Disconnected: []
+    Disconnected: [],
+    UserPresenceChanged: [],
+    FriendsUpdated: [],
+    ServerMembersUpdated: [],
+    ServerMembershipRemoved: [],
+    UserProfileUpdated: [],
+    ServerUpdated: [],
+    ServerChannelsUpdated: []
 };
 
 
@@ -40,6 +47,7 @@ function emit(event, payload) {
 }
 
 let connection = null;
+let startPromise = null;
 
 const infiniteRetryPolicy = {
     nextRetryDelayInMilliseconds: (retryContext) => {
@@ -61,13 +69,21 @@ export function getConnection() {
     connection.on("NewMessage", msg => emit("NewMessage", msg));
     connection.on("MessageEdited", msg => emit("MessageEdited", msg));
     connection.on("MessageDeleted", msg => emit("MessageDeleted", msg));
+    connection.on("UserPresenceChanged", payload => emit("UserPresenceChanged", payload));
+    connection.on("FriendsUpdated", payload => emit("FriendsUpdated", payload));
+    connection.on("ServerMembersUpdated", payload => emit("ServerMembersUpdated", payload));
+    connection.on("ServerMembershipRemoved", payload => emit("ServerMembershipRemoved", payload));
+    connection.on("UserProfileUpdated", payload => emit("UserProfileUpdated", payload));
+    connection.on("ServerUpdated", payload => emit("ServerUpdated", payload));
+    connection.on("ServerChannelsUpdated", payload => emit("ServerChannelsUpdated", payload));
 
     connection.onreconnecting(() => {
         emit("Disconnected");
     });
 
-    connection.onreconnected = async () => {
-        console.warn("[SignalR] Reconnected — restoring groups...");
+    connection.onreconnected(async () => {
+        startPromise = null;
+        console.warn("[SignalR] Reconnected ï¿½ restoring groups...");
 
         for (const s of connectionState.servers) {
             try {
@@ -87,13 +103,29 @@ export function getConnection() {
         }
 
         emit("Reconnected");
+    });
+
+    connection.ensureStarted = async () => {
+        if (connection.state === signalR.HubConnectionState.Connected) return;
+        if (connection.state === signalR.HubConnectionState.Connecting && startPromise) return startPromise;
+
+        const token = getAccessToken();
+        if (!token) throw new Error("No access token available");
+
+        startPromise = connection.start().catch(err => {
+            startPromise = null;
+            throw err;
+        });
+
+        return startPromise;
     };
 
     connection.onclose(() => {
+        startPromise = null;
         emit("Disconnected");
     });
 
-    connection.start().catch(err =>
+    connection.ensureStarted().catch(err =>
         console.error("SignalR connection failed:", err)
     );
 

@@ -1,19 +1,72 @@
 import { useEffect, useRef, useState } from "react";
 import { useMessages } from "../../context/MessagesContext";
 import { useAppState } from "../../context/AppStateContext";
-import { flattenMessages } from "../../utils/flattenMessages";
 import MessageBubble from "./MessageBubble";
 import { SkeletonMessage } from "./SkeletonMessage";
-import { getAvatarSrc } from "../../utils/avatar";
-import { useOverlay } from "../../context/OverlayContext";
-import UserActionsMenu from "../users/UserActionsMenu";
+import { getAvatarSrc, getInitials } from "../../utils/avatar";
+import { formatMessageDate } from "../../utils/formatDate";
+import { useUserOverlayActions } from "../../context/OverlayContext";
 
 const WINDOW_SIZE = 300;
+
+function flattenMessages(messages) {
+    const rows = [];
+    let currentDay = null;
+    let lastUser = null;
+    let lastMessageTime = null;
+
+    messages.forEach((msg) => {
+        const date = formatMessageDate(msg.createdAt);
+        const baseTime = new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const isToday = date === "Today";
+        const timeLabel = isToday
+            ? baseTime
+            : `${new Date(msg.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} ${baseTime}`;
+
+        const isFirstInGroup = msg.userGuid !== lastUser;
+
+        if (date !== currentDay) {
+            rows.push({
+                type: "day",
+                id: "day-" + date,
+                date
+            });
+            currentDay = date;
+            lastUser = null;
+            lastMessageTime = null;
+        }
+
+        if (isFirstInGroup) {
+            rows.push({
+                type: "group-header",
+                id: "group-" + msg.messageGuid,
+                displayName: msg.displayName || msg.userName,
+                userName: msg.userName,
+                avatarUrl: msg.avatarKey || msg.avatarUrl || null,
+                avatarKey: msg.avatarKey || null,
+                userGuid: msg.userGuid,
+                timestamp: msg.createdAt,
+                timeLabel
+            });
+            lastUser = msg.userGuid;
+            lastMessageTime = msg.createdAt;
+        }
+
+        rows.push({
+            type: "bubble",
+            id: msg.messageGuid,
+            message: { ...msg, timeLabel, firstInGroup: isFirstInGroup }
+        });
+        lastMessageTime = msg.createdAt;
+    });
+
+    return rows;
+}
 
 export default function MessageList({ searchNavigating = false }) {
     const { selectedChannel } = useAppState();
     const { messages, loadOlderMessages, hasMore } = useMessages();
-    const { openOverlay, closeOverlay } = useOverlay();
+    const { handleUserClick, handleUserContext } = useUserOverlayActions();
 
     const scrollRef = useRef(null);
     const loadingRef = useRef(false);
@@ -88,16 +141,7 @@ export default function MessageList({ searchNavigating = false }) {
 
     if (!selectedChannel) {
         return (
-            <div
-                style={{
-                    flex: 1,
-                    background: "var(--bg-secondary)",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    color: "var(--text-secondary)"
-                }}
-            >
+            <div className="message-list-empty">
                 Select a channel to start chatting.
             </div>
         );
@@ -107,24 +151,10 @@ export default function MessageList({ searchNavigating = false }) {
         <div
             ref={scrollRef}
             onScroll={onScroll}
-            style={{
-                flex: 1,
-                overflowY: "auto",
-                padding: "20px 0 40px",
-                background: "var(--bg-secondary)",
-                position: "relative"
-            }}
+            className="message-list"
         >
             {!hasMore && visibleRows.length > 0 && (
-                <div
-                    style={{
-                        textAlign: "center",
-                        padding: "8px 0",
-                        color: "var(--text-secondary)",
-                        fontSize: 13,
-                        opacity: 0.9
-                    }}
-                >
+                <div className="message-list-history">
                     Beginning of history
                 </div>
             )}
@@ -134,20 +164,11 @@ export default function MessageList({ searchNavigating = false }) {
                     return (
                         <div
                             key={row.id}
-                            style={{
-                                textAlign: "center",
-                                margin: "14px 0",
-                                color: "var(--text-secondary)",
-                                fontSize: 14,
-                                opacity: 0.85,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10
-                            }}
+                            className="message-list-day"
                         >
-                            <span style={{ flex: 1, height: 1, background: "var(--border-color)" }} />
+                            <span className="message-list-day-line" />
                             {row.date}
-                            <span style={{ flex: 1, height: 1, background: "var(--border-color)" }} />
+                            <span className="message-list-day-line" />
                         </div>
                     );
                 }
@@ -162,106 +183,29 @@ export default function MessageList({ searchNavigating = false }) {
                     return (
                         <div
                             key={row.id}
-                            onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"}
-                            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-                            onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                openOverlay("user-actions", {
-                                    component: (
-                                        <UserActionsMenu
-                                            user={userSummary}
-                                            x={rect.left + 10}
-                                            y={rect.bottom + 4}
-                                            onAction={() => closeOverlay()}
-                                            canKick={false}
-                                            canBan={false}
-                                        />
-                                    )
-                                });
-                            }}
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                openOverlay("user-actions", {
-                                    component: (
-                                        <UserActionsMenu
-                                            user={userSummary}
-                                            x={e.clientX}
-                                            y={e.clientY}
-                                            onAction={() => closeOverlay()}
-                                            canKick={false}
-                                            canBan={false}
-                                        />
-                                    )
-                                });
-                            }}
-                            style={{
-                                display: "flex",
-                                gap: 12,
-                                padding: "6px 12px",
-                                marginTop: 6,
-                                minHeight: 50,
-                                borderRadius: 10,
-                                cursor: "pointer",
-                                transition: "background 120ms ease"
-                            }}
+                            onClick={(e) => handleUserClick(userSummary, e)}
+                            onContextMenu={(e) => handleUserContext(userSummary, e)}
+                            className="message-list-group"
                         >
                             <div
-                                onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    openOverlay("user-actions", {
-                                        component: (
-                                            <UserActionsMenu
-                                                user={userSummary}
-                                                canKick={false}
-                                                canBan={false}
-                                                x={e.clientX}
-                                                y={e.clientY}
-                                                onAction={() => closeOverlay()}
-                                            />
-                                        )
-                                    });
-                                }}
-                                style={{
-                                    width: 40,
-                                    height: 40,
-                                    borderRadius: "50%",
-                                    background: "var(--bg-tertiary)",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontWeight: 700,
-                                    color: "var(--text-primary)",
-                                    overflow: "hidden"
-                                }}
+                                onContextMenu={(e) => handleUserContext(userSummary, e)}
+                                className="avatar avatar--md"
                             >
                                 {getAvatarSrc({ avatarKey: row.avatarKey, userGuid: row.userGuid }) ? (
                                     <img
                                         src={getAvatarSrc({ avatarKey: row.avatarKey, userGuid: row.userGuid })}
                                         alt=""
-                                        style={{
-                                            width: "100%",
-                                            height: "100%",
-                                            objectFit: "cover"
-                                        }}
+                                        className="avatar"
                                     />
                                 ) : (
-                                    (row.displayName || row.userName || "?").charAt(0).toUpperCase()
+                                    getInitials(row.displayName || row.userName)
                                 )}
                             </div>
 
-                            <div
-                                style={{
-                                    fontWeight: 600,
-                                    color: "var(--text-primary)",
-                                    marginTop: 2,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8
-                                }}
-                            >
+                            <div className="message-list-group-meta">
                                 <span>{row.displayName}</span>
                                 {row.timestamp && (
-                                    <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
+                                    <span className="message-list-group-time">
                                         {new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                     </span>
                                 )}
@@ -275,10 +219,7 @@ export default function MessageList({ searchNavigating = false }) {
                         <div
                             key={row.id}
                             id={`msg-${row.message.messageGuid}`}
-                            style={{
-                                paddingLeft: 64,
-                                paddingRight: 32
-                            }}
+                            className="message-list-bubble-wrap"
                         >
                             <MessageBubble msg={row.message} />
                         </div>
@@ -289,7 +230,7 @@ export default function MessageList({ searchNavigating = false }) {
             })}
 
             {searchNavigating && (
-                <div style={{ padding: "0 16px" }}>
+                <div className="message-list-skeletons">
                     <SkeletonMessage />
                     <SkeletonMessage />
                     <SkeletonMessage />
@@ -303,20 +244,7 @@ export default function MessageList({ searchNavigating = false }) {
                         scrollToBottom(true);
                         setShowJump(false);
                     }}
-                    style={{
-                        position: "fixed",
-                        bottom: 80,
-                        right: 30,
-                        padding: "8px 12px",
-                        background: "var(--bg-primary)",
-                        border: `1px solid var(--border-color)`,
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        zIndex: 9999,
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-                        color: "var(--text-primary)",
-                        fontSize: 13
-                    }}
+                    className="message-list-jump"
                 >
                     Jump to Present
                 </div>

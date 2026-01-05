@@ -5,6 +5,7 @@ using backend.Helper;
 using backend.Interfaces;
 using backend.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace backend.Services
 {
@@ -37,7 +38,7 @@ namespace backend.Services
             
         }
 
-        public async Task<bool> isServerMemberAsync(Guid userGuid, Guid serverGuid)
+        public async Task<bool> IsServerMemberAsync(Guid userGuid, Guid serverGuid)
         {
             return await _db.ServerMembers
                 .AnyAsync(sm =>
@@ -56,7 +57,7 @@ namespace backend.Services
             {
                 return false; 
             }
-            return await isServerMemberAsync(userGuid, serverGuid);
+            return await IsServerMemberAsync(userGuid, serverGuid);
         }
 
         public async Task<bool> HasChannelPermission(Guid userGuid, Guid channelGuid, string permission)
@@ -148,6 +149,46 @@ namespace backend.Services
             };
         }
 
+        public async Task SetUserPresenceStatusAsync(Guid userGuid, string? presence)
+        {
+            var user = await  _db.Users.FirstOrDefaultAsync(u => u.UserGuid == userGuid);
+            if (user == null)
+            {
+                throw new InvalidOperationException("Could not find user");
+            }
+            user.Status = presence;
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task<List<UserResponseDto>> SearchUsersAsync(Guid userGuid, string query, int limit = 20)
+        {
+            var trimmed = query?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                return [];
+            }
+
+            var safeLimit = Math.Clamp(limit, 1, 50);
+            var lowered = trimmed.ToLower(CultureInfo.InvariantCulture);
+
+            return await _db.Users
+                .AsNoTracking()
+                .Where(u => !u.IsDeleted && u.UserGuid != userGuid)
+                .Where(u =>
+                    u.UserName.ToLower().Contains(lowered) ||
+                    u.DisplayName.ToLower().Contains(lowered))
+                .OrderBy(u => u.UserName)
+                .Take(safeLimit)
+                .Select(u => new UserResponseDto
+                {
+                    UserGuid = u.UserGuid,
+                    DisplayName = u.DisplayName,
+                    UserName = u.UserName,
+                    AvatarKey = u.AvatarKey,
+                    Presence = u.Status
+                })
+                .ToListAsync();
+        }
         public async Task<string> UploadAvatarAsync(Guid userGuid, Stream fileStream, string contentType, CancellationToken ct)
         {
             var user = await _db.Users.FirstOrDefaultAsync(u => u.UserGuid == userGuid, ct);
@@ -164,7 +205,14 @@ namespace backend.Services
 
             if (!string.IsNullOrEmpty(oldKey) && oldKey != newKey)
             {
-                try { await _storageService.DeleteAsync(oldKey, ct); } catch { /* best effort */ }
+                try 
+                {
+                     await _storageService.DeleteAsync(oldKey, ct);     
+                } 
+                catch
+                {
+                    
+                }
             }
 
             user.AvatarKey = newKey;

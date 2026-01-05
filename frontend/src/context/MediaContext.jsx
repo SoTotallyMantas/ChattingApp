@@ -1,11 +1,17 @@
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { getUnifiedConnection, onUserEvent } from "../signalr/Media";  
+import { onSignalREvent, removeSignalREvent } from "../signalr/index";
 import { useAuth } from "./AuthContext";
 import { getAccessToken } from "../api/axios";
 import { apiGetVoiceUsers } from "../api/channels";
 import { MediaRoomClient } from '../webrtc/MediaRoomClient';  
 
 const MediaContext = createContext(null);
+
+const hasActiveVideoTrack = (stream) => {
+    if (!stream?.getVideoTracks) return false;
+    return stream.getVideoTracks().some(track => track.readyState === "live" && track.enabled !== false);
+};
 
 export function MediaProvider({ children }) {
     const { loadingAuth, user: authUser } = useAuth();
@@ -20,6 +26,23 @@ export function MediaProvider({ children }) {
     const [videoTiles, setVideoTiles] = useState([]);
     const [roomId, setRoomId] = useState(null);
     const [micDeviceId, setMicDeviceId] = useState(null);
+    const [cameraEnabled, setCameraEnabled] = useState(false);
+    const prevMicMutedRef = useRef(false);
+    const joinedChannelRef = useRef(joinedChannel);
+    const myStateRef = useRef(myState);
+    const JanusClientRef = useRef(janusClient);
+    const updateLocalStream = (stream) => {
+        if (!stream) {
+            setLocalStream(null);
+            return;
+        }
+        const tracks = stream.getTracks ? stream.getTracks() : [];
+        setLocalStream(new MediaStream(tracks));
+    };
+
+    useEffect(() => {
+        JanusClientRef.current = janusClient;
+    }, [janusClient]);
 
     useEffect(() => {
         const start = async () => {
@@ -42,20 +65,43 @@ export function MediaProvider({ children }) {
     }, [authUser]);
 
     useEffect(() => {
-        onUserEvent("UserJoinedChannel", (user) => {
-            setUsers((prevUsers) => {
-                const enriched = {
-                    ...user,
-                    // Fill in our own display info when the event payload is sparse.
-                    ...(user.userGuid === authUserRef.current?.userGuid
-                        ? { displayName: authUserRef.current.displayName, userName: authUserRef.current.userName }
-                        : {})
-                };
+        joinedChannelRef.current = joinedChannel;
+    }, [joinedChannel]);
 
-                const existingIdx = prevUsers.findIndex(u => u.userGuid === enriched.userGuid);
+    useEffect(() => {
+        myStateRef.current = myState;
+    }, [myState]);
+
+    useEffect(() => {
+        onUserEvent("UserJoinedChannel", (user) => {
+            console.log("UserJoinedChannel payload:", user);
+             if (!joinedChannelRef.current) return;
+
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            if (!incomingGuid) return;
+
+            const incomingChannel = user?.channelGuid ?? user?.ChannelGuid ?? user?.channelId ?? user?.ChannelId;
+            if (incomingChannel && incomingChannel !== joinedChannelRef.current) return;
+
+            const selfGuid = authUserRef.current?.userGuid ?? authUserRef.current?.UserGuid ?? authUserRef.current?.userId ?? authUserRef.current?.UserId;
+            const enriched = incomingGuid === selfGuid && authUserRef.current
+                ? { ...user, displayName: authUserRef.current.displayName, userName: authUserRef.current.userName }
+                : user;
+
+            setUsers((prevUsers) => {
+                const existingIdx = prevUsers.findIndex(u =>
+                    (u?.userGuid ?? u?.UserGuid ?? u?.userId ?? u?.UserId) === incomingGuid
+                );
+
                 if (existingIdx >= 0) {
                     const next = [...prevUsers];
-                    next[existingIdx] = { ...next[existingIdx], ...enriched };
+                    const existing = next[existingIdx];
+                    next[existingIdx] = {
+                        ...existing,
+                        ...enriched,
+                        isMuted: (enriched?.isMuted ?? enriched?.IsMuted) ?? existing.isMuted,
+                        isDeafened: (enriched?.isDeafened ?? enriched?.IsDeafened) ?? existing.isDeafened
+                    };
                     return next;
                 }
                 return [...prevUsers, enriched];
@@ -63,87 +109,184 @@ export function MediaProvider({ children }) {
         });
 
         onUserEvent("UserLeftChannel", (user) => {
-            setUsers((prevUsers) => prevUsers.filter(u => u.userGuid !== user.userGuid));
-            
-            setRemoteStreams((prev) => {
-                const updated = new Map(prev);
-                updated.delete(user.userGuid);
-                return updated;
-            });
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            if (!incomingGuid) return;
+
+            setUsers(prev =>
+                prev.filter(u => (u?.userGuid ?? u?.UserGuid ?? u?.userId ?? u?.UserId) !== incomingGuid)
+            );
         });
 
         onUserEvent("UserMutedState", (user) => {
-            setUsers((prevUsers) =>
-                prevUsers.map(u => u.userGuid === user.userGuid ? { ...u, isMuted: user.isMuted } : u)
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            const incomingMuted = user?.isMuted ?? user?.IsMuted;
+            if (!incomingGuid || incomingMuted === undefined) return;
+
+            setUsers(prev =>
+                prev.map(u =>
+                    (u?.userGuid ?? u?.UserGuid ?? u?.userId ?? u?.UserId) === incomingGuid
+                        ? { ...u, isMuted: incomingMuted }
+                        : u
+                )
             );
         });
 
         onUserEvent("UserDeafenedState", (user) => {
-            setUsers((prevUsers) =>
-                prevUsers.map(u => u.userGuid === user.userGuid ? { ...u, isDeafened: user.isDeafened } : u)
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            const incomingDeaf = user?.isDeafened ?? user?.IsDeafened;
+            if (!incomingGuid || incomingDeaf === undefined) return;
+
+            setUsers(prev =>
+                prev.map(u =>
+                    (u?.userGuid ?? u?.UserGuid ?? u?.userId ?? u?.UserId) === incomingGuid
+                        ? { ...u, isDeafened: incomingDeaf }
+                        : u
+                )
             );
         });
 
         onUserEvent("SpeakingState", (user) => {
+            if (!joinedChannelRef.current) return;
             setUsers((prevUsers) =>
                 prevUsers.map(u => u.userGuid === user.userGuid ? { ...u, isSpeaking: user.isSpeaking } : u)
             );
         });
+
+        onUserEvent("VoiceDisconnected", async (payload) => {
+            const activeChannel = joinedChannelRef.current;
+            if (!activeChannel) return;
+            if (payload.channelGuid !== activeChannel) return;
+
+            try {
+                await JanusClientRef.current?.leaveRoom();
+            } catch (err) {
+                console.error("Error leaving Janus room after being disconnected", err);
+            }
+
+            setJoinedChannel(null);
+            updateLocalStream(null);
+            setRemoteStreams(new Map());
+            setJanusClient(null);
+            setRoomId(null);
+            setUsers([]);
+            setCameraEnabled(false);
+        })
+    }, []);
+
+    useEffect(() => {
+        const handleProfileUpdated = (payload) => {
+            const userGuid = payload?.userGuid;
+            if (!userGuid) return;
+            setUsers((prev) =>
+                prev.map((u) => {
+                    const guid = u?.userGuid ?? u?.UserGuid ?? u?.userId ?? u?.UserId;
+                    if (guid !== userGuid) return u;
+                    return {
+                        ...u,
+                        displayName: payload.displayName ?? u.displayName,
+                        avatarKey: payload.avatarKey ?? u.avatarKey
+                    };
+                })
+            );
+        };
+        onSignalREvent("UserProfileUpdated", handleProfileUpdated);
+        return () => removeSignalREvent("UserProfileUpdated", handleProfileUpdated);
     }, []);
 
    
     const joinVoice = async (channelGuid) => {
+        await conn.ensureStarted();
+        joinedChannelRef.current = channelGuid;
+        if(joinedChannel === channelGuid && janusClient){
+            return;
+        };
         const { roomId } = await conn.invoke("JoinChannel", channelGuid);
-
-        if (janusClient && joinedChannel && joinedChannel !== channelGuid) {
-
-            await janusClient.leaveRoom(); 
+        await conn.invoke("WatchChannel", channelGuid);
+        setJoinedChannel(channelGuid);
+        setUsers([]);
+        let client = janusClient;
+        if (client && joinedChannel && joinedChannel !== channelGuid) {
+            await client.leaveRoom();
+            client = null;
+            setJanusClient(null);
         }
 
-        if (!janusClient) {
-       
-            const client = new MediaRoomClient(roomId, setLocalStream, addRemoteStream, removeRemoteStream);
+        if (!client) {
+            client = new MediaRoomClient(roomId, updateLocalStream, addRemoteStream, removeRemoteStream);
             await client.initialize();
             if (micDeviceId) {
                 await client.setAudioDevice(micDeviceId);
             }
             await client.joinRoom(roomId);
-            setJanusClient(client); 
+            setJanusClient(client);
         } else {
-            
             if (micDeviceId) {
-                await janusClient.setAudioDevice(micDeviceId);
+                await client.setAudioDevice(micDeviceId);
             }
-            await janusClient.joinRoom(roomId);
+            await client.joinRoom(roomId);
         }
 
-        setJoinedChannel(channelGuid);  
+       
         setRoomId(roomId);
-        setUsers([]); // reset voice roster until events arrive for the new channel
+    
 
         try {
             const { data } = await apiGetVoiceUsers(channelGuid);
-            setUsers(Array.isArray(data) ? data : []);
+            const list = Array.isArray(data) ? data : [];
+              
+            setUsers(prev => {
+                const byId = new Map();
+                prev.forEach(u => {
+                    const id = u.userGuid ?? u.UserGuid;
+                    if (id) byId.set(id, u);
+                });
+
+                list.forEach(u => {
+                    const id = u.userGuid ?? u.UserGuid;
+                    if (!id) return;
+                    const existing = byId.get(id) ?? {};
+                    byId.set(id, { ...existing, ...u });
+                });
+                return [...byId.values()];
+            });
+        
         } catch (err) {
             console.error("Failed to load voice users", err);
         }
+
+        try {
+            if (myStateRef.current?.micMuted) {
+                await conn.invoke("MuteUser", channelGuid, true);
+                client?.setAudioEnabled?.(false);
+            }
+            if (myStateRef.current?.isDeaf) {
+                await conn.invoke("DeafenUser", channelGuid, true);
+                client?.setRemoteAudioEnabled?.(false);
+            }
+        } catch (err) {
+            console.error("Failed to apply pre-join voice state", err);
+        }
     };
 
-    const leaveVoice = async (channelGuid) => {
-        const targetChannel = channelGuid || joinedChannel;
-        if (!targetChannel) return;
+    const leaveVoice = async () => {
+        
         try {
+            const activeChannel = joinedChannelRef.current;
+            if(activeChannel){
+                await conn.invoke("UnwatchChannel", activeChannel);
+            }
             await janusClient?.leaveRoom();
-            await conn.invoke("LeaveChannel", targetChannel);
+            await conn.invoke("LeaveChannel");
         } catch (err) {
             console.error("Error leaving Janus room", err);
         }
         setJoinedChannel(null);
-        setLocalStream(null);
+        updateLocalStream(null);
         setRemoteStreams(new Map());
         setJanusClient(null);
         setRoomId(null);
         setUsers([]);
+        setCameraEnabled(false);
     };
 
   
@@ -162,28 +305,58 @@ export function MediaProvider({ children }) {
 
    
     const muteMic = async () => {
+        setMyState(s => {
+            const next = ({ ...s, micMuted: true });
+            myStateRef.current = next;
+            return next;
+        });
+        if (!joinedChannel) return;
         await conn.invoke("MuteUser", joinedChannel, true);
-        setMyState(s => ({ ...s, micMuted: true }));
         janusClient?.setAudioEnabled?.(false);
     };
 
     const unmuteMic = async () => {
+        if (myStateRef.current?.isDeaf) {
+            prevMicMutedRef.current = false;
+            await undeafen();
+            return;
+        }
+        setMyState(s => {
+            const next = ({ ...s, micMuted: false });
+            myStateRef.current = next;
+            return next;
+        });
+        if (!joinedChannel) return;
         await conn.invoke("MuteUser", joinedChannel, false);
-        setMyState(s => ({ ...s, micMuted: false }));
         janusClient?.setAudioEnabled?.(true);
     };
 
    
     const deafen = async () => {
+        prevMicMutedRef.current = myStateRef.current?.micMuted ?? false;
+        setMyState(s => {
+            const next = ({ ...s, micMuted: true, isDeaf: true });
+            myStateRef.current = next;
+            return next;
+        });
+        if (!joinedChannel) return;
+        await conn.invoke("MuteUser", joinedChannel, true);
         await conn.invoke("DeafenUser", joinedChannel, true);
-        setMyState(s => ({ ...s, isDeaf: true }));
-        janusClient?.setRemoteAudioEnabled?.(false);
+        JanusClientRef.current?.setRemoteAudioEnabled?.(false);
+        JanusClientRef.current?.setAudioEnabled?.(false);
     };
 
     const undeafen = async () => {
+        setMyState(s => {
+            const next = ({ ...s, isDeaf: false, micMuted: prevMicMutedRef.current });
+            myStateRef.current = next;
+            return next;
+        });
+        if (!joinedChannel) return;
+        await conn.invoke("MuteUser", joinedChannel, prevMicMutedRef.current);
         await conn.invoke("DeafenUser", joinedChannel, false);
-        setMyState(s => ({ ...s, isDeaf: false }));
-        janusClient?.setRemoteAudioEnabled?.(true);
+        JanusClientRef.current?.setRemoteAudioEnabled?.(true);
+        JanusClientRef.current?.setAudioEnabled?.(!prevMicMutedRef.current);
     };
 
     const selectMicrophone = async (deviceId) => {
@@ -198,41 +371,54 @@ export function MediaProvider({ children }) {
         const guid = channelGuid || joinedChannel;
         const activeRoomId = roomId;
         if (!guid || !activeRoomId) return;
-        if (!janusClient) {
-            const client = new MediaRoomClient(activeRoomId, setLocalStream, addRemoteStream, removeRemoteStream);
+
+        let client = janusClient;
+        if (!client) {
+            client = new MediaRoomClient(activeRoomId, updateLocalStream, addRemoteStream, removeRemoteStream);
             await client.initialize();
             if (micDeviceId) {
                 await client.setAudioDevice(micDeviceId);
             }
             await client.joinRoom(activeRoomId);
             setJanusClient(client);
-        } else {
-            if (micDeviceId) {
-                await janusClient.setAudioDevice(micDeviceId);
-            }
-            await janusClient.joinRoom(activeRoomId);
-        }
+        } 
+        await client.setVideoEnabled(true);
+        setCameraEnabled(true);
+        const muted = !!myStateRef.current?.micMuted;
+        const deaf = !!myStateRef.current?.isDeaf;
+        client.setAudioEnabled(!muted && !deaf);
+        client.setRemoteAudioEnabled(!deaf);
+
     };
 
-
-    const stopAll = async () => {
-        await leaveVoice();
+    const toggleCamera = async () => {
+        if (!joinedChannelRef.current) return;
+        if (cameraEnabled) {
+            try {
+                await janusClient?.setVideoEnabled(false);
+            } catch (err) {
+                console.error("Failed to disable camera", err);
+                return;
+            }
+            setCameraEnabled(false);
+            return;
+        }
+        await startCamera(joinedChannelRef.current);
     };
 
     useEffect(() => {
     const tiles = [];
-
     
-    if (localStream) {
+    if (hasActiveVideoTrack(localStream)) {
         tiles.push({ id: "local", stream: localStream });
     }
-
   
     remoteStreams.forEach((stream, userId) => {
-        tiles.push({ id: userId, stream });
+        if (hasActiveVideoTrack(stream)) {
+            tiles.push({ id: userId, stream });
+        }
     });
 
-    
     setVideoTiles((prevTiles) => {
      
         if (JSON.stringify(prevTiles) !== JSON.stringify(tiles)) {
@@ -253,12 +439,13 @@ export function MediaProvider({ children }) {
             localStream,
             remoteStreams,
             videoTiles,
+            cameraEnabled,
             muteMic,
             unmuteMic,
             deafen,
             undeafen,
             startCamera,
-            stopAll,
+            toggleCamera,
             leaveVoice,
             selectMicrophone,
             micDeviceId,

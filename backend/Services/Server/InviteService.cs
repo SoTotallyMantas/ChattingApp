@@ -3,18 +3,21 @@ using backend.DTO.InviteDtos;
 using backend.DTO.UserDtos;
 using backend.Extensions;
 using backend.Helper;
+using backend.Hubs;
 using backend.Interfaces;
 using backend.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace backend.Services.Server
 {
-    public class InviteService(VoxlockDbContext db , IPermissionEvualuator perm, IServerHelper helper) : IInviteService
+    public class InviteService(VoxlockDbContext db , IPermissionEvualuator perm, IServerHelper helper, IHubContext<ChatHub> hubContext) : IInviteService
     {
         private readonly VoxlockDbContext _db = db;
         private readonly IPermissionEvualuator _perm = perm;
         private readonly IServerHelper _helper = helper;
+        private readonly IHubContext<ChatHub> _hubContext = hubContext;
         public async Task<InviteResponseDto> CreateInviteAsync(Guid serverGuid, CreateInviteRequestDto dto, ClaimsPrincipal user)
         {
             Guid userGuid = user.GetUserGuid();
@@ -64,16 +67,22 @@ namespace backend.Services.Server
                 throw new InvalidOperationException("Invite has reached its maximum number of uses.");
 
            
-            bool banned = await _db.ServerBans
-                .AnyAsync(b => b.ServerGuid == invite.ServerGuid && b.UserGuid == userGuid);
+            var ban = await _db.ServerBans
+                .FirstOrDefaultAsync(b => b.ServerGuid == invite.ServerGuid && b.UserGuid == userGuid);
 
-            if (banned)
-                throw new UnauthorizedAccessException("You are banned from this server.");
+            if (ban != null)
+            {
+                var reason = string.IsNullOrWhiteSpace(ban.Reason)
+                    ? "No reason provided."
+                    : ban.Reason;
+                throw new InvalidOperationException($"You are banned from this server. Reason: {reason}");
+            }
 
             
             bool alreadyMember = await _db.ServerMembers
                 .AnyAsync(m => m.ServerGuid == invite.ServerGuid && m.UserGuid == userGuid);
 
+            var membershipAdded = false;
             if (!alreadyMember)
             {
                 var membership = new ServerMembers
@@ -84,6 +93,7 @@ namespace backend.Services.Server
                 };
 
                 _db.ServerMembers.Add(membership);
+                membershipAdded = true;
 
                 var defaultRoleGuid = await _db.ServerRoles
                     .Where(r => r.ServerGuid == invite.ServerGuid && r.IsDefault)
@@ -112,6 +122,12 @@ namespace backend.Services.Server
             invite.Uses++;
 
             await _db.SaveChangesAsync();
+            if (membershipAdded)
+            {
+                await _hubContext.Clients
+                    .Group($"server-{invite.ServerGuid}")
+                    .SendAsync("ServerMembersUpdated", new { serverGuid = invite.ServerGuid });
+            }
         }
 
         public async Task<List<InviteResponseDto>> GetInvitesAsync(Guid serverGuid, ClaimsPrincipal user)

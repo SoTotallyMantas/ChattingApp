@@ -4,7 +4,8 @@
     {
         public static string UserAvatar(Guid userGuid)
         {
-            return $"users/{userGuid}/avatar";
+            var unique = Guid.NewGuid().ToString("N");
+            return $"users/{userGuid}/avatar/{unique}";
         }
 
         public static string ServerIcon(Guid serverGuid)

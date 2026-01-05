@@ -19,5 +19,25 @@ export function MessagesProvider({ children }) {
 }
 
 export function useMessages() {
-    return useContext(MessagesContext);
+    const ctx = useContext(MessagesContext);
+
+    if (ctx) return ctx;
+
+   
+    return {
+        messages: [],
+        hasMore: false,
+        loadOlderMessages: async () => {},
+        search: async () => [],
+        searching: false,
+        searchMode: false,
+        searchResults: [],
+        clearSearch: () => {},
+        replyTo: null,
+        startReply: () => {},
+        clearReply: () => {},
+        sendMessage: async () => {},
+        editMessage: async () => {},
+        deleteMessage: async () => {},
+    };
 }

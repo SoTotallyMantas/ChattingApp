@@ -1,32 +1,49 @@
 import { useMembers } from "../hooks/useMembers";
 import { useAppState } from "../context/AppStateContext";
+import { useUserOverlayActions } from "../context/OverlayContext";
 import { getAvatarSrc } from "../utils/avatar";
+import { getTopRole } from "../utils/roleHierarchy";
+
+const rolePosition = (role) => {
+    if (!role) return Number.POSITIVE_INFINITY;
+    const name = role.roleName?.toLowerCase();
+    if (role.isOwner || name === "owner") return -Infinity;
+    if (role.isDefault) return Number.POSITIVE_INFINITY;
+    return typeof role.position === "number" ? role.position : Number.POSITIVE_INFINITY;
+};
 
 export default function MembersSidebar() {
-    const { selectedServer, membersSidebarOpen, setMembersSidebarOpen } = useAppState();
-    const { members } = useMembers(
+    const { selectedServer, membersSidebarOpen } = useAppState();
+    const { handleUserClick, handleUserContext } = useUserOverlayActions();
+    const { members, loadMembers, loadBans, canViewBans } = useMembers(
         selectedServer?.serverGuid,
         selectedServer?.permissions || []
     );
 
     if (!selectedServer || !membersSidebarOpen) return null;
 
+    const permissions = selectedServer?.permissions || [];
+    const canKick = permissions.includes("KICK_MEMBERS");
+    const canBan = permissions.includes("BAN_MEMBERS");
+
+    const getUser = (member) => {
+        const user = member.user || {};
+        return {
+            userGuid: user.userGuid || member.userGuid || member.userId || user.UserGuid,
+            userName: user.userName || member.userName || member.UserName,
+            displayName: user.displayName || member.displayName || user.userName || member.userName,
+            avatarKey: user.avatarKey || member.avatarKey || user.AvatarKey || member.AvatarKey,
+            presence: user.presence || member.presence || user.presence
+        };
+    };
+
     const renderName = (member) =>
-        member.user?.displayName ||  
+        member.user?.displayName ||
         member.displayName;
-       
-        
 
     const getHighestRole = (member) => {
-        const roles = member.roles || member.Roles || [];
-        if (roles.length) {
-            return roles.reduce((best, role) => {
-                if (!best) return role;
-                const bestPos = best.position ?? Number.POSITIVE_INFINITY;
-                const rolePos = role.position ?? Number.POSITIVE_INFINITY;
-                return rolePos < bestPos ? role : best;
-            }, null);
-        }
+        const topRole = getTopRole(member);
+        if (topRole) return topRole;
         if (member.roleName) {
             return { roleName: member.roleName, position: Number.POSITIVE_INFINITY, color: "#888" };
         }
@@ -34,8 +51,8 @@ export default function MembersSidebar() {
     };
 
     const renderRole = (member) => {
-        const roles = member.roles || member.Roles || [];
-        if (roles.length) return roles.map((r) => r.roleName).join(", ");
+        const topRole = getTopRole(member);
+        if (topRole) return topRole.roleName || "";
         return member.roleName || "";
     };
 
@@ -51,6 +68,7 @@ export default function MembersSidebar() {
             .slice(0, 2);
     };
 
+    
     const grouped = () => {
         const groups = new Map();
         members.forEach((m) => {
@@ -64,9 +82,9 @@ export default function MembersSidebar() {
 
         return Array.from(groups.values())
             .sort((a, b) => {
-                const posA = a.role.position ?? Number.POSITIVE_INFINITY;
-                const posB = b.role.position ?? Number.POSITIVE_INFINITY;
-                if (posA !== posB) return posA - posB; 
+                const posA = rolePosition(a.role);
+                const posB = rolePosition(b.role);
+                if (posA !== posB) return posA - posB;
                 return (a.role.roleName || "").localeCompare(b.role.roleName || "");
             })
             .map((group) => ({
@@ -78,42 +96,13 @@ export default function MembersSidebar() {
     };
 
     return (
-        <div
-            style={{
-                width: 240,
-                background: "var(--bg-secondary)",
-                color: "var(--text-primary)",
-                display: "flex",
-                flexDirection: "column",
-                padding: "10px",
-                overflowY: "auto",
-                borderLeft: `1px solid var(--border-color)`,
-            }}
-        >
-            <div
-                style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    opacity: 0.85,
-                    marginBottom: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    color: "var(--text-primary)"
-                }}
-            >
-                <span>Members · {members.length}</span>
-                <button
-                    onClick={() => setMembersSidebarOpen(false)}
-                    style={toggleBtn}
-                    title="Hide members"
-                >
-                    ✕
-                </button>
+        <div className="members-sidebar">
+            <div className="members-sidebar-header">
+                <span>Members: {members.length}</span>
             </div>
 
             {members.length === 0 && (
-                <div style={{ color: "#b9bbbe", fontSize: 13, padding: "6px 0" }}>
+                <div className="members-sidebar-empty">
                     No members to display.
                 </div>
             )}
@@ -121,55 +110,61 @@ export default function MembersSidebar() {
             {grouped().map((group) => (
                 <div key={group.role.roleName || "group"}>
                     <div
-                        style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: group.role.color || "#b9bbbe",
-                            textTransform: "uppercase",
-                            letterSpacing: 0.5,
-                            margin: "10px 0 6px",
-                            opacity: 0.85
-                        }}
+                        className="members-sidebar-group-title"
+                        style={{ color: group.role.color || "#b9bbbe" }}
                     >
-                        {group.role.roleName || "Members"} · {group.members.length}
+                        {group.role.roleName || "Members"}: {group.members.length}
                     </div>
-                    {group.members.map((member) => (
-                        <div
-                            key={member.userGuid || member.userId || renderName(member)}
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                padding: "8px 8px",
-                                borderRadius: 6,
-                                gap: 10,
-                                background: "var(--bg-tertiary)",
-                                marginBottom: 6,
-                            }}
-                        >
-                            <Avatar member={member} renderInitials={renderInitials} />
-                            <div style={{ minWidth: 0 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
-                                    {renderName(member)}
-                                </div>
-                                <div
-                                    style={{
-                                        fontSize: 12,
-                                        opacity: 0.65,
-                                        color: "var(--text-secondary)",
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis"
-                                    }}
-                                >
-                                    {renderRole(member)}
+                    {group.members.map((member) => {
+                        const user = getUser(member);
+
+                        return (
+                            <div
+                                key={member.userGuid || member.userId || renderName(member)}
+                                className="members-sidebar-member"
+                                onClick={(e) => handleUserClick(user, e)}
+                                onContextMenu={(e) => handleUserContext(user, e, {
+                                    canKick,
+                                    canBan,
+                                    onAction: async () => {
+                                        await loadMembers();
+                                        if (canViewBans) {
+                                            await loadBans();
+                                        }
+                                    }
+                                })}
+                            >
+                                <Avatar member={member} renderInitials={renderInitials} />
+                                <div className="members-sidebar-member-info">
+                                    <div className="members-sidebar-member-name">
+                                        {renderName(member)}
+                                    </div>
+                                    <div className="members-sidebar-presence">
+                                        <span
+                                        className="members-sidebar-presence-dot"
+                                        style={{background: presenceColor(user.presence)}}
+                                        />
+                                        {user.presence || "offline"}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             ))}
         </div>
     );
+}
+
+function presenceColor(presence) {
+    if(!presence) return "var(--border-color)";
+    const lower = presence.toLowerCase();
+    switch(lower) {
+        case "online":
+            return "#1ce465ff";
+        default:
+            return "var(--border-color)";
+    }
 }
 
 function Avatar({ member, renderInitials }) {
@@ -180,26 +175,12 @@ function Avatar({ member, renderInitials }) {
     const initials = renderInitials(member) || "?";
 
     return (
-        <div
-            style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "var(--bg-hover)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--text-primary)",
-                fontSize: 12,
-                fontWeight: 700,
-                overflow: "hidden"
-            }}
-        >
+        <div className="avatar avatar--sm">
             {src ? (
                 <img
                     src={src}
                     alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    className="avatar"
                 />
             ) : (
                 initials
@@ -207,17 +188,3 @@ function Avatar({ member, renderInitials }) {
         </div>
     );
 }
-
-const toggleBtn = {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    border: `1px solid var(--border-color)`,
-    background: "transparent",
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-};

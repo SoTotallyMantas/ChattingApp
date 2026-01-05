@@ -1,146 +1,128 @@
 import { useMemo, useState } from "react";
 import { useFriends } from "../hooks/useFriends";
-
+import { startDm } from "../api/dms";
+import { useAppState } from "../context/AppStateContext";
+import { useToast } from "../context/ToastContext";
+import { getAvatarSrc, getInitials } from "../utils/avatar";
+import { useOverlay, useUserOverlayActions } from "../context/OverlayContext";
 export default function DMSidebar() {
     const { friends, loading } = useFriends();
     const [query, setQuery] = useState("");
+    const { setSelectedServer, setSelectedChannel, setServerSettingsOpen } = useAppState();
+    const toast = useToast();
+    const { openOverlay } = useOverlay();
+    const { handleUserClick, handleUserContext } = useUserOverlayActions();
+    const openDm = async (friend) => {
+        try {
+            const data = await startDm(friend.friendGuid);
+            setServerSettingsOpen(false);
+            setSelectedServer(data.server);
+            setSelectedChannel(data.channel);
+        } catch {
+            toast.show("error", "Failed to open DM.");
+        }
+    };
 
     const filtered = useMemo(() => {
+        const list = Array.isArray(friends) ? friends : [];
         const q = query.trim().toLowerCase();
-        if (!q) return friends;
+        if (!q) return list;
 
-        return friends.filter((f) =>
-            (f.displayName || "").toLowerCase().includes(q) ||
-            (f.userName || "").toLowerCase().includes(q)
-        );
+        return list.filter((f) => {
+            const displayName = (f.displayName || "").toLowerCase();
+            const userName = (f.userName || "").toLowerCase();
+            return displayName.includes(q) || userName.includes(q);
+        });
     }, [friends, query]);
 
     return (
-        <div
-            style={{
-                width: 250,
-                background: "linear-gradient(180deg, var(--bg-secondary), var(--bg-primary))",
-                borderRight: `1px solid var(--border-color)`,
-                padding: 10,
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
-                boxSizing: "border-box",
-                overflowY: "auto",
-                overflowX: "hidden"
-            }}
-        >
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 12
-                }}
-            >
-                <div style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: 15 }}>
+        <div className="dm-sidebar">
+            <div className="dm-sidebar-header">
+                <div className="dm-sidebar-title">
                     Direct Messages
                 </div>
                 <button
-                    style={ghostBtn}
-                    title="Start a DM (placeholder)"
+                    className="dm-sidebar-new"
+                    title="Find users"
+                    type="button"
+                    onClick={() => openOverlay("user-search")}
                 >
                     +
                 </button>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
+            <div className="dm-sidebar-search">
                 <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search friends"
-                    style={{
-                        width: "100%",
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: `1px solid var(--border-color)`,
-                        background: "var(--bg-tertiary)",
-                        color: "var(--text-primary)"
-                    }}
+                    className="input"
                 />
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingRight: 4, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className="dm-sidebar-list">
                 {loading && (
-                    <div style={{ color: "var(--text-secondary)", padding: "6px 4px" }}>
+                    <div className="dm-sidebar-muted">
                         Loading friends...
                     </div>
                 )}
 
                 {!loading && filtered.length === 0 && (
-                    <div style={{ color: "var(--text-secondary)", padding: "6px 4px" }}>
+                    <div className="dm-sidebar-muted">
                         No friends found.
                     </div>
                 )}
 
-                {!loading && filtered.map((friend) => (
+                {!loading && filtered.map((friend) => {
+                    const displayName = friend.displayName || friend.userName || "Unknown";
+                    const userOverlay = {
+                        userGuid: friend.friendGuid,
+                        displayName,
+                        userName: friend.userName,
+                        avatarKey: friend.avatarKey,
+                        presence: friend.presence  
+                    };
+                    const avatarSrc = getAvatarSrc({ avatarKey: friend.avatarKey, userGuid: friend.friendGuid });
+                    return (
                     <div
                         key={friend.friendshipGuid}
-                        style={{
-                            padding: "8px 10px",
-                            borderRadius: 10,
-                            background: "var(--bg-tertiary)",
-                            color: "var(--text-primary)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            cursor: "pointer"
-                        }}
+                        className="channel-row"
                         title={friend.userName}
+                        onClick={() => openDm(friend)}
+                        onContextMenu={(e) => handleUserContext(userOverlay, e)}
                     >
-                        <div
-                            style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: "50%",
-                                background: "var(--bg-hover)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 700,
-                                fontSize: 12
-                            }}
-                        >
-                            {getInitials(friend.displayName || friend.userName)}
+                        <div className="avatar avatar--md">
+                          {avatarSrc ? (
+                             <img
+                                src={avatarSrc}
+                                alt={displayName}
+                                className="avatar"
+                             /> 
+                          ) : (
+                             getInitials(displayName)
+                          )}
                         </div>
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 600 }}>{friend.displayName}</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: "50%",
-                                    background: presenceColor(friend.presence || friend.relationshipStatus)
-                                }} />
+                        <div className="dm-sidebar-info">
+                            <div className="dm-sidebar-name">{displayName}</div>
+                            <div className="dm-sidebar-presence">
+                                <span
+                                    className="dm-sidebar-presence-dot"
+                                    style={{
+                                        background: presenceColor(friend.presence || friend.relationshipStatus)
+                                    }}
+                                />
                                 {friend.presence || "offline"}
                             </div>
                         </div>
                     </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
 }
 
-const ghostBtn = {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    border: `1px solid var(--border-color)`,
-    background: "var(--bg-tertiary)",
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    fontWeight: 700
-};
 
-function getInitials(text = "") {
-    return text.slice(0, 2).toUpperCase();
-}
 
 function presenceColor(presence) {
     if (!presence) return "var(--border-color)";

@@ -1,0 +1,33 @@
+# Garage Core configurations
+
+rpc_bind_addr = "0.0.0.0:3901"
+rpc_advertise_addr = "0.0.0.0:3901"
+rpc_secret = "${GARAGE_RPC_SECRET}"
+
+api_bind_addr = "0.0.0.0:3900"
+api_advertise_addr = "0.0.0.0:3900"
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+
+replication_factor  = 1
+consistency_mode    = "consistent"
+
+# Admin api
+[admin]
+api_bind_addr = "0.0.0.0:3902"
+admin_token = "${GARAGE_ADMIN_TOKEN}"
+metrics_token = "${GARAGE_METRICS_TOKEN}"
+# S3-coompatible api 
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "0.0.0.0:3900"
+vhost = false
+# Storage tunning
+[store]
+write_buffer_size = "128MB"
+cache_size = "512MB"
+# Logging 
+[log]
+level = "info"
+output = "stdout"

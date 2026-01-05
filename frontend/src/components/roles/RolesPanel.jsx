@@ -3,28 +3,34 @@ import { useToast } from "../../context/ToastContext";
 import RolesApi from "../../api/serverRoles";
 import { useOverlay } from "../../context/OverlayContext";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { useAppState } from "../../context/AppStateContext";
 
 export default function RolesPanel({ serverId }) {
     const toast = useToast();
     const { openOverlay } = useOverlay();
+    const { refreshServerPermissions, selectedServer } = useAppState();
 
     const [roles, setRoles] = useState([]);
     const [permissions, setPermissions] = useState([]);
 
-    const loadData = async () => {
+    const loadData = async ({ silent = false } = {}) => {
         try {
             const rolesRes = await RolesApi.getRoles(serverId);
             const incoming = rolesRes.data || [];
             const owner = incoming.find(r => r.isOwner || r.roleName?.toLowerCase() === "owner");
+            const defaults = incoming.filter(r => r.isDefault && r.roleGuid !== owner?.roleGuid);
+            const rest = incoming.filter(r => r.roleGuid !== owner?.roleGuid && !r.isDefault);
             const ordered = owner
-                ? [owner, ...incoming.filter(r => r.roleGuid !== owner.roleGuid)]
-                : incoming;
+                ? [owner, ...rest, ...defaults]
+                : [...rest, ...defaults];
             setRoles(ordered);
 
             const permissionsRes = await RolesApi.getAllPermissions();
             setPermissions(permissionsRes.data);
         } catch {
-            toast.show("error", "Failed to load roles or permissions.");
+            if (!silent) {
+                toast.show("error", "Failed to load roles or permissions.");
+            }
         }
     };
 
@@ -34,9 +40,22 @@ export default function RolesPanel({ serverId }) {
 
    
     const startCreate = () => {
+        const nextPosition = roles
+            .filter((role) => !role.isDefault)
+            .reduce((max, role) => {
+                const pos = typeof role.position === "number" ? role.position : 0;
+                return Math.max(max, pos);
+            }, 0) + 1;
+
         openOverlay("role-modal", {
             isCreating: true,
-            roleData: { serverGuid: serverId, permissionsList: permissions }
+            roleData: {
+                serverGuid: serverId,
+                permissionsList: permissions,
+                currentUserPermissions: selectedServer?.permissions || [],
+                nextPosition,
+                onSaved: () => loadData({ silent: true })
+            }
         });
     };
 
@@ -44,7 +63,13 @@ export default function RolesPanel({ serverId }) {
     const startEdit = (role) => {
         openOverlay("role-modal", {
             isCreating: false,
-            roleData: { ...role, serverGuid: serverId, permissionsList: permissions }
+            roleData: {
+                ...role,
+                serverGuid: serverId,
+                permissionsList: permissions,
+                currentUserPermissions: selectedServer?.permissions || [],
+                onSaved: () => loadData({ silent: true })
+            }
         });
     };
 
@@ -53,6 +78,7 @@ export default function RolesPanel({ serverId }) {
         try {
             await RolesApi.deleteRole(serverId, roleGuid);
             toast.show("success", "Role deleted.");
+            await refreshServerPermissions(serverId);
             loadData();
         } catch {
             toast.show("error", "Failed to delete role.");
@@ -64,8 +90,13 @@ export default function RolesPanel({ serverId }) {
         roles.find(r => r.isOwner || r.roleName?.toLowerCase() === "owner"),
     [roles]);
 
+    const defaultRoles = useMemo(
+        () => roles.filter(r => r.isDefault && r.roleGuid !== ownerRole?.roleGuid),
+        [roles, ownerRole]
+    );
+
     const draggableRoles = useMemo(
-        () => roles.filter(r => r.roleGuid !== ownerRole?.roleGuid),
+        () => roles.filter(r => r.roleGuid !== ownerRole?.roleGuid && !r.isDefault),
         [roles, ownerRole]
     );
 
@@ -77,7 +108,9 @@ export default function RolesPanel({ serverId }) {
         const [moved] = updated.splice(result.source.index, 1);
         updated.splice(result.destination.index, 0, moved);
 
-        const nextOrder = ownerRole ? [ownerRole, ...updated] : updated;
+        const nextOrder = ownerRole
+            ? [ownerRole, ...updated, ...defaultRoles]
+            : [...updated, ...defaultRoles];
         setRoles(nextOrder);
 
         try {
@@ -98,7 +131,7 @@ export default function RolesPanel({ serverId }) {
         <div className="roles-panel">
             <div className="roles-header">
                 <h2>Roles</h2>
-                <button className="role-modal-createBtn" onClick={startCreate}>+ Create Role</button>
+                <button className="button" onClick={startCreate}>+ Create Role</button>
             </div>
 
             <div className="role-list">
@@ -108,8 +141,8 @@ export default function RolesPanel({ serverId }) {
                             <strong style={{ color: ownerRole.color }}>{ownerRole.roleName}</strong>
                             <span className="role-sub">Owner • fixed at top</span>
                         </div>
-                        <div className="role-actions">
-                            <button className="role-modal-button" onClick={() => startEdit(ownerRole)}>Edit</button>
+                            <div className="role-actions">
+                            <button className="button" onClick={() => startEdit(ownerRole)}>Edit</button>
                         </div>
                     </div>
                 )}
@@ -133,14 +166,14 @@ export default function RolesPanel({ serverId }) {
                                                 </div>
                                                 <div className="role-actions">
                                                     <button
-                                                        className="role-modal-button"
+                                                        className="button"
                                                         onClick={() => startEdit(role)}
                                                     >
                                                         Edit
                                                     </button>
                                                     {!role.isDefault && (
                                                         <button
-                                                            className="role-modal-button"
+                                                            className="button"
                                                             onClick={() => deleteRole(role.roleGuid)}
                                                         >
                                                             Delete

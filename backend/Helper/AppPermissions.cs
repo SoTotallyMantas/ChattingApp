@@ -3,7 +3,6 @@
     public static class AppPermissions
     {
         // General
-        public const string VIEW_SERVER = "VIEW_SERVER";
         public const string MANAGE_SERVER = "MANAGE_SERVER";
 
         // Channels
@@ -14,7 +13,6 @@
 
         // Messages
         public const string SEND_MESSAGES = "SEND_MESSAGES";
-        public const string EDIT_MESSAGES = "EDIT_MESSAGES";
         public const string MANAGE_MESSAGES = "MANAGE_MESSAGES";
 
         // Invites
@@ -27,18 +25,12 @@
         // Helper: list of all permissions
         public static readonly string[] All =
         {
-            VIEW_SERVER,
             MANAGE_SERVER,
-
             MANAGE_CHANNELS,
-
             MANAGE_ROLES,
-
             SEND_MESSAGES,
             MANAGE_MESSAGES,
-
             CREATE_INVITES,
-
             KICK_MEMBERS,
             BAN_MEMBERS
         };

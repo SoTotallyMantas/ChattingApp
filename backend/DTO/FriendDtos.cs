@@ -15,5 +15,7 @@ namespace backend.DTO.FriendDtos
         public string? Presence { get; set; }
         public required string RelationshipStatus { get; set; }
         public DateTime CreatedAt { get; set; }
+        public bool IsIncoming { get; set; }
+        public bool IsOutgoing { get; set; }
     }
 }

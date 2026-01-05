@@ -1,122 +1,219 @@
+import { useEffect, useState, useRef } from "react";
 import { useMediaState } from "../../context/MediaContext";
 import VoiceMiniAvatar from "./VoiceMiniAvatar";
-import { useOverlay } from "../../context/OverlayContext";
-import UserActionsMenu from "../users/UserActionsMenu";
+import { useUserOverlayActions } from "../../context/OverlayContext";
+import MicrophoneOffIcon from "../icons/MicrophoneOffIcon";
+import DeafenedIcon from "../icons/DeafenedIcon";
+import { apiGetVoiceUsers } from "../../api/channels";
+import { getUnifiedConnection, onUserEvent, removeUserEvent } from "../../signalr/Media";
+import { onSignalREvent, removeSignalREvent } from "../../signalr/index";
 
-export default function VoiceUserList({ channelGuid, openOverlay, style }) {
+export default function VoiceUserList({ channelGuid }) {
     const { joinedChannel, users } = useMediaState();
-    const { openOverlay: showOverlay, closeOverlay } = useOverlay();
+    const joinedRef = useRef(joinedChannel);
+    joinedRef.current = joinedChannel;
+    const { handleUserClick, handleUserContext, openProfile } = useUserOverlayActions();
+    const [previewUsers, setPreviewUsers] = useState([]);
 
-    if (!joinedChannel || (channelGuid && joinedChannel !== channelGuid)) return null;
+    if (!channelGuid) return null;
+
+    const isJoined = joinedChannel === channelGuid;
+    const roster = isJoined ? users : previewUsers;
+
+    useEffect(() => {
+        if (!channelGuid || isJoined) return;
+        let alive = true;
+
+        (async () => {
+            try {
+                const { data } = await apiGetVoiceUsers(channelGuid);
+                console.log("Fetched voice users:", data);
+                const list = Array.isArray(data)
+                    ? data.map(u => ({
+                        userGuid: u?.userGuid ?? u?.UserGuid ?? u?.userId ?? u?.UserId,
+                        isMuted: u?.isMuted ?? u?.IsMuted,
+                        isDeafened: u?.isDeafened ?? u?.IsDeafened,
+                        displayName: u?.displayName ?? u?.DisplayName,
+                        userName: u?.userName ?? u?.UserName,
+                        avatarKey: u?.avatarKey ?? u?.AvatarKey
+                    })).filter(u => u.userGuid)
+                    : [];
+                if (alive) setPreviewUsers(list);
+            } catch (err) {
+                console.error("Failed to load voice users", err);
+                if (alive) setPreviewUsers([]);
+            }
+        })();
+
+        return () => {
+            alive = false;
+        };
+    }, [channelGuid, isJoined]);
+
+    useEffect(() => {
+        if (!channelGuid || isJoined) return;
+        const conn = getUnifiedConnection();
+
+        const upsert = (user) => {
+            setPreviewUsers((prev) => {
+                const idx = prev.findIndex((u) => u.userGuid === user.userGuid);
+                if (idx >= 0) {
+                    const next = [...prev];
+                    next[idx] = { ...next[idx], ...user };
+                    return next;
+                }
+                return [...prev, user];
+            });
+        };
+
+        const onJoined = (user) => {
+            const incomingChannel = user?.channelGuid ?? user?.ChannelGuid ?? user?.channelId ?? user?.ChannelId;
+            if (incomingChannel !== channelGuid) return;
+
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            if (!incomingGuid) return;
+
+            upsert({
+                userGuid: incomingGuid,
+                displayName: user?.displayName ?? user?.DisplayName,
+                userName: user?.userName ?? user?.UserName,
+                avatarKey: user?.avatarKey ?? user?.AvatarKey,
+                isMuted: user?.isMuted ?? user?.IsMuted,
+                isDeafened: user?.isDeafened ?? user?.IsDeafened
+            });
+        };
+
+        const onLeft = (user) => {
+            const incomingChannel = user?.channelGuid ?? user?.ChannelGuid ?? user?.channelId ?? user?.ChannelId;
+            if (incomingChannel !== channelGuid) return;
+
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            if (!incomingGuid) return;
+
+            setPreviewUsers((prev) => prev.filter((u) => u.userGuid !== incomingGuid));
+        };
+
+        const onMuted = (user) => {
+            const incomingChannel = user?.channelGuid ?? user?.ChannelGuid ?? user?.channelId ?? user?.ChannelId;
+            if (incomingChannel !== channelGuid) return;
+
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            const incomingMuted = user?.isMuted ?? user?.IsMuted;
+            if (!incomingGuid || incomingMuted === undefined) return;
+
+            setPreviewUsers((prev) =>
+                prev.map((u) => u.userGuid === incomingGuid ? { ...u, isMuted: incomingMuted } : u)
+            );
+        };
+
+        const onDeafened = (user) => {
+            const incomingChannel = user?.channelGuid ?? user?.ChannelGuid ?? user?.channelId ?? user?.ChannelId;
+            if (incomingChannel !== channelGuid) return;
+
+            const incomingGuid = user?.userGuid ?? user?.UserGuid ?? user?.userId ?? user?.UserId;
+            const incomingDeaf = user?.isDeafened ?? user?.IsDeafened;
+            if (!incomingGuid || incomingDeaf === undefined) return;
+
+            setPreviewUsers((prev) =>
+                prev.map((u) => u.userGuid === incomingGuid ? { ...u, isDeafened: incomingDeaf } : u)
+            );
+        };
+
+        conn.ensureStarted()
+            .then(() => conn.invoke("WatchChannel", channelGuid))
+            .catch(() => {});
+
+        onUserEvent("UserJoinedChannel", onJoined);
+        onUserEvent("UserLeftChannel", onLeft);
+        onUserEvent("UserMutedState", onMuted);
+        onUserEvent("UserDeafenedState", onDeafened);
+
+        return () => {
+            removeUserEvent("UserJoinedChannel", onJoined);
+            removeUserEvent("UserLeftChannel", onLeft);
+            removeUserEvent("UserMutedState", onMuted);
+            removeUserEvent("UserDeafenedState", onDeafened);
+            if(joinedRef.current !== channelGuid){
+                conn.invoke("UnwatchChannel", channelGuid).catch(() => {});
+            };
+        };
+    }, [channelGuid, isJoined]);
+
+    useEffect(() => {
+        const handleProfileUpdated = (payload) => {
+            const userGuid = payload?.userGuid;
+            if (!userGuid) return;
+            setPreviewUsers((prev) =>
+                prev.map((u) =>
+                    u.userGuid === userGuid
+                        ? {
+                            ...u,
+                            displayName: payload.displayName ?? u.displayName,
+                            avatarKey: payload.avatarKey ?? u.avatarKey
+                        }
+                        : u
+                )
+            );
+        };
+        onSignalREvent("UserProfileUpdated", handleProfileUpdated);
+        return () => removeSignalREvent("UserProfileUpdated", handleProfileUpdated);
+    }, []);
 
     return (
         <div
-            style={{
-                marginLeft: 10,
-                marginTop: 6,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                ...style
-            }}
+            className="voice-user-list"
         >
-            {users.length === 0 && (
-                <div style={{ color: "var(--text-secondary)", fontSize: 12, padding: "4px 0" }}>
+            {roster.length === 0 && (
+                <div className="voice-user-list-empty">
                     No one in voice
                 </div>
             )}
 
-            {users.map((u) => (
+            {roster.map((u) => (
                 <UserEntry
                     key={u.userGuid}
                     user={u}
-                    openOverlay={openOverlay}
-                    showOverlay={showOverlay}
-                    closeOverlay={closeOverlay}
+                    handleUserClick={handleUserClick}
+                    handleUserContext={handleUserContext}
+                    openProfile={openProfile}
                 />
             ))}
         </div>
     );
 }
 
-function UserEntry({ user, openOverlay, showOverlay, closeOverlay }) {
-    const speakingRing = user.isSpeaking ? `2px solid var(--accent)` : `2px solid var(--border-color)`;
-    const baseBg = "var(--bg-tertiary)";
-
+function UserEntry({ user, handleUserClick, handleUserContext, openProfile }) {
     return (
         <div
             data-user={user.userGuid}
-            style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 8px",
-                borderRadius: 8,
-                background: baseBg,
-                cursor: "pointer",
-                transition: "background 120ms ease"
-            }}
-            onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                showOverlay?.("user-actions", {
-                    component: (
-                        <UserActionsMenu
-                            user={user}
-                            canKick={false}
-                            canBan={false}
-                            x={e.clientX}
-                            y={e.clientY}
-                            onAction={() => {
-                                closeOverlay?.();
-                            }}
-                        />
-                    )
-                });
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = baseBg)}
-            onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                showOverlay?.("user-actions", {
-                    component: (
-                        <UserActionsMenu
-                            user={user}
-                            canKick={false}
-                            canBan={false}
-                            x={rect.left + 10}
-                            y={rect.bottom + 4}
-                            onAction={() => closeOverlay?.()}
-                        />
-                    )
-                });
-            }}
+            className="voice-user-entry"
+            onContextMenu={(e) => handleUserContext(user, e)}
+            onClick={(e) => handleUserClick(user, e)}
         >
             <VoiceMiniAvatar
                 user={user}
                 onClick={(e) => {
                     e.stopPropagation();
-                    openOverlay?.("user-profile", {
-                        user,
-                        x: e.clientX,
-                        y: e.clientY
-                    });
+                    openProfile?.(user, { x: e.clientX, y: e.clientY });
                 }}
-                style={{
-                    width: 32,
-                    height: 32,
-                    border: speakingRing,
-                    transition: "border 120ms ease"
-                }}
+                size="sm"
             />
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+            <div className="voice-user-entry-info">
+                <div className="voice-user-entry-name">
                     {user.displayName || user.userName || "Unknown"}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 6 }}>
-                    {user.isMuted && <span>🔇</span>}
-                    {user.isDeafened && <span>🔕</span>}
+                <div className="voice-user-entry-status">
+                    {user.isMuted && (
+                        <span className="voice-user-entry-status-icon voice-user-entry-status-icon--muted" title="Muted">
+                            <MicrophoneOffIcon size={12} />
+                        </span>
+                    )}
+                    {user.isDeafened && (
+                        <span className="voice-user-entry-status-icon voice-user-entry-status-icon--deafened" title="Deafened">
+                            <DeafenedIcon size={12} />
+                        </span>
+                    )}
                 </div>
             </div>
         </div>

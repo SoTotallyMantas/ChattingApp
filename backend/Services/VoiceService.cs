@@ -168,7 +168,7 @@ namespace backend.Services
                     publishers = 100,
                     audiolevel_ext = true,
                     videoorient_ext = true,
-                    bitrate = 256000,
+                    bitrate = 2540000,
                     bitrate_cap = true
                 };
 

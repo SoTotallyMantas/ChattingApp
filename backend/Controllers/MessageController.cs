@@ -48,8 +48,8 @@ namespace backend.Controllers
             [FromQuery] int limit = 20)
         {
             Guid userGuid = _userContext.UserGuid;
-            const double minScore = 0.35;
-            var results = await _messages.SearchAsync(channelGuid, query, userGuid, limit, minScore);
+            
+            var results = await _messages.SearchAsync(channelGuid, query, userGuid, limit);
             return Ok(results);
         }
 
@@ -93,6 +93,15 @@ namespace backend.Controllers
             var userGuid = _userContext.UserGuid;
             var result = await _messages.GetAttachmentAsync(attachmentGuid, userGuid, ct);
             return File(result.Stream, result.ContentType, result.FileName);
+        }
+
+        [HttpDelete("{messageGuid}/attachments/{attachmentGuid}")]
+        [Authorize]
+        public async Task<ActionResult> DeleteAttachment(Guid messageGuid, Guid attachmentGuid, CancellationToken ct)
+        {
+            var userGuid = _userContext.UserGuid;
+            await _messages.RemoveAttachmentAsync(messageGuid, attachmentGuid, userGuid, ct);
+            return NoContent();
         }
     }
 }

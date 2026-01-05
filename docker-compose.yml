@@ -29,8 +29,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
       garage:
         condition: service_started
       janus:
@@ -89,7 +87,7 @@ services:
   # =========================
   pgadmin:
     container_name: pgadmin
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:9.11
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
@@ -101,35 +99,7 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:
-      - app-network
-
-  # =========================
-  # REDIS
-  # =========================
-  redis:
-    container_name: redis
-    image: redis:7.2
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - app-network
-
-  # =========================
-  # REDISINSIGHT
-  # =========================
-  redisinsight:
-    container_name: redisinsight
-    image: redis/redisinsight:latest
-    ports:
-      - "5540:5540"
-    depends_on:
-      - redis
-    networks:
-      - app-network
-
+      - app-network 
   # =========================
   # GARAGE (S3 Storage)
   # =========================
@@ -157,7 +127,7 @@ services:
   # GARAGE WEBUI
   # =========================
   garage-webui:
-    image: khairul169/garage-webui:latest
+    image: khairul169/garage-webui:1.1.0
     container_name: garage-webui
     restart: unless-stopped
     volumes:
@@ -176,7 +146,7 @@ services:
   # =========================
   janus:
     container_name: janus
-    image: sucwangsr/janus-webrtc-gateway-docker:latest
+    image: sucwangsr/janus-webrtc-gateway-docker:1.3.3-muti
     volumes:
       - ./janus.jcfg:/usr/local/etc/janus/janus.jcfg
     ports:
@@ -199,7 +169,6 @@ networks:
 # =========================
 volumes:
   postgres_data:
-  redis_data:
   garage_meta:
   garage_data:
   pgadmin_data:

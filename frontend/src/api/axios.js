@@ -50,6 +50,16 @@ api.interceptors.response.use(
     (res) => res,
     async (err) => {
         const original = err.config;
+        const isAuthEndpoint = (url) =>
+            typeof url === "string" &&
+            (url.includes("/auth/login") ||
+                url.includes("/auth/register") ||
+                url.includes("/auth/refresh") ||
+                url.includes("/auth/logout"));
+
+        if (isAuthEndpoint(original?.url)) {
+            throw err;
+        }
 
         if ((err.response?.status === 401 || err.response?.status === 403) && !original._retry) {
             original._retry = true;

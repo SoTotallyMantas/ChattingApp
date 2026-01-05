@@ -1,8 +1,11 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path=".env" />
+    <File Path=".env.example" />
     <File Path="garage.toml" />
+    <File Path="garage.toml.example" />
     <File Path="janus.jcfg" />
+    <File Path="janus.jcfg.example" />
   </Folder>
   <Project Path="backend/backend.csproj" />
   <Project Path="docker-compose.dcproj">

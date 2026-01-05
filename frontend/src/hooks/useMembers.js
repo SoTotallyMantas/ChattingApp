@@ -6,7 +6,7 @@ import {
     unbanMember,
     getServerBans
 } from "../api/serverMembers";
-
+import { onSignalREvent, removeSignalREvent } from "../signalr/index.js";
 
 export function useMembers(serverId, permissions = []) {
     const [members, setMembers] = useState([]);
@@ -53,6 +53,70 @@ export function useMembers(serverId, permissions = []) {
             setBans([]);           
         }
     }, [serverId, canViewBans]);
+
+    useEffect(() => {
+        const HandlePresence = (payload) => {
+            const userGuid = payload?.userGuid;
+            if(!userGuid)
+            {
+                return;
+            }
+            const presence = payload?.status ?? payload?.presence ?? payload?.Presence;
+
+            setMembers(( prevMembers) => 
+                prevMembers.map((member) => {
+                    
+                    if (member.user?.userGuid === userGuid) 
+                    {
+                        return { ...member, user: { ...member.user, presence } };
+                    }
+                    return member;
+                })
+            );
+        };
+        onSignalREvent("UserPresenceChanged", HandlePresence);
+        return () => removeSignalREvent("UserPresenceChanged", HandlePresence);
+    }, []);
+
+    useEffect(() => {
+        if (!serverId) return;
+        const handleMembersUpdated = (payload) => {
+            const incomingServer = payload?.serverGuid ?? payload?.ServerGuid;
+            if (!incomingServer || incomingServer !== serverId) return;
+            loadMembers();
+        };
+        onSignalREvent("ServerMembersUpdated", handleMembersUpdated);
+        return () => removeSignalREvent("ServerMembersUpdated", handleMembersUpdated);
+    }, [serverId, canViewBans]);
+
+    useEffect(() => {
+        const handleProfileUpdated = (payload) => {
+            const userGuid = payload?.userGuid;
+            if (!userGuid) return;
+            setMembers((prev) =>
+                prev.map((member) => {
+                    const memberGuid =
+                        member?.user?.userGuid ||
+                        member?.user?.UserGuid ||
+                        member?.userGuid
+                    if (memberGuid !== userGuid) return member;
+                    const nextUser = {
+                        ...member.user,
+                        displayName: payload.displayName ?? member.user?.displayName,
+                        avatarKey: payload.avatarKey ?? member.user?.avatarKey
+                    };
+                    return {
+                        ...member,
+                        user: nextUser,
+                        displayName: payload.displayName ?? member.displayName,
+                        avatarKey: payload.avatarKey ?? member.avatarKey
+                    };
+                })
+            );
+        };
+        onSignalREvent("UserProfileUpdated", handleProfileUpdated);
+        return () => removeSignalREvent("UserProfileUpdated", handleProfileUpdated);
+    }, []);
 
     return {
         members,

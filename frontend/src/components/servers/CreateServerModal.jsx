@@ -80,47 +80,47 @@ export default function CreateServerModal({ onCreated }) {
     };
 
     return (
-        <div data-overlay-root="true" style={modal}>
-            <h2 style={title}>Create Server</h2>
-            <p style={subtitle}>Set a server name and optional icon before inviting your friends.</p>
+        <div data-overlay-root="true" className="modal-content">
+            <h2 className="panel-title">Create Server</h2>
+            <p className="panel-subtitle">Set a server name and optional icon before inviting your friends.</p>
 
             <form onSubmit={create}>
-                <label style={label}>Server Name</label>
+                <label className="create-server-label">Server Name</label>
                 <input
                     value={serverName}
                     onChange={(e) => setServerName(e.target.value)}
-                    style={inputStyle}
+                    className="input"
                     placeholder="My community"
                 />
 
-                <label style={label}>Server Icon</label>
-                <div style={iconRow}>
-                    <div style={iconPreviewBox}>
+                <label className="create-server-label">Server Icon</label>
+                <div className="create-server-icon-row">
+                    <div className="create-server-icon-preview">
                         {iconPreview ? (
                             <img
                                 src={iconPreview}
                                 alt="Server icon preview"
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                className="create-server-icon-image"
                             />
                         ) : (
-                            <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}>?</span>
+                            <span className="create-server-icon-placeholder">?</span>
                         )}
                     </div>
 
-                    <div style={uploadActions}>
+                    <div className="create-server-upload-actions">
                         <button
                             type="button"
-                            style={uploadBtn}
+                            className="button"
                             onClick={() => fileInputRef.current?.click()}
                         >
                             Upload Icon
                         </button>
                         {iconPreview && (
-                            <button type="button" style={clearBtn} onClick={clearIcon}>
+                            <button type="button" className="button" onClick={clearIcon}>
                                 Remove
                             </button>
                         )}
-                        <div style={hint}>PNG or JPG up to 7MB.</div>
+                        <div className="create-server-hint">PNG or JPG up to 7MB.</div>
                     </div>
                 </div>
 
@@ -128,22 +128,22 @@ export default function CreateServerModal({ onCreated }) {
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
-                    style={{ display: "none" }}
+                    className="create-server-file-input"
                     onChange={onPickIcon}
                 />
 
-                <div style={actions}>
+                <div className="actions-row">
                     <button
                         type="button"
                         onClick={closeOverlay}
-                        style={cancelBtn}
+                        className="button"
                     >
                         Cancel
                     </button>
 
                     <button
                         type="submit"
-                        style={createBtn}
+                        className="button"
                     >
                         Create
                     </button>
@@ -152,117 +152,3 @@ export default function CreateServerModal({ onCreated }) {
         </div>
     );
 }
-
-const inputStyle = {
-    width: "100%",
-    padding: "10px 12px",
-    marginBottom: 16,
-    borderRadius: 8,
-    border: "1px solid var(--border-color)",
-    background: "var(--bg-tertiary)",
-    color: "var(--text-primary)",
-    outline: "none"
-};
-
-const modal = {
-    width: 440,
-    background: "var(--bg-secondary)",
-    padding: 24,
-    borderRadius: 12,
-    color: "var(--text-primary)",
-    border: `1px solid var(--border-color)`,
-    boxShadow: "0 16px 45px rgba(0,0,0,0.45)"
-};
-
-const title = { margin: 0, fontSize: 20 };
-
-const subtitle = {
-    margin: "6px 0 18px",
-    color: "var(--text-secondary)",
-    lineHeight: 1.4
-};
-
-const label = {
-    display: "block",
-    marginBottom: 8,
-    color: "var(--text-secondary)",
-    fontWeight: 600
-};
-
-const iconRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 16
-};
-
-const iconPreviewBox = {
-    width: 56,
-    height: 56,
-    borderRadius: "50%",
-    background: "var(--bg-tertiary)",
-    border: `1px solid var(--border-color)`,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden"
-};
-
-const uploadActions = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    alignItems: "flex-start"
-};
-
-const uploadBtn = {
-    padding: "10px 14px",
-    background: "var(--accent)",
-    border: "none",
-    borderRadius: 8,
-    color: "white",
-    cursor: "pointer",
-    fontWeight: 700
-};
-
-const clearBtn = {
-    padding: "8px 12px",
-    background: "transparent",
-    borderRadius: 8,
-    border: `1px solid var(--border-color)`,
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    fontWeight: 600
-};
-
-const hint = {
-    fontSize: 12,
-    color: "var(--text-secondary)"
-};
-
-const actions = {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 20
-};
-
-const cancelBtn = {
-    padding: "10px 14px",
-    background: "var(--bg-tertiary)",
-    border: `1px solid var(--border-color)`,
-    borderRadius: 8,
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    fontWeight: 600
-};
-
-const createBtn = {
-    padding: "10px 14px",
-    background: "var(--accent)",
-    border: "none",
-    borderRadius: 8,
-    color: "white",
-    cursor: "pointer",
-    fontWeight: 700
-};

@@ -12,6 +12,7 @@ namespace backend.Interfaces
         Task<Users?> ValidateRefreshToken(string token);
         Task<AuthResponseDto> IssueTokens(Users user);
         Task ChangePassword(Guid userGuid, string currentPassword, string newPassword);
+        Task DeleteAccount(Guid userGuid, string password);
 
     }
 }

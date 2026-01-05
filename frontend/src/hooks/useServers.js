@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import serverApi from "../api/servers";
-import { connectionState } from "../signalr/index";
+import { connectionState, getConnection, onSignalREvent, removeSignalREvent } from "../signalr/index";
 
 const reloadEvent = "servers:reload";
 
@@ -72,6 +72,44 @@ export function useServers() {
         const handler = () => loadServers();
         window.addEventListener(reloadEvent, handler);
         return () => window.removeEventListener(reloadEvent, handler);
+    }, []);
+
+    useEffect(() => {
+        const handleMembershipRemoved = async (payload) => {
+            const serverGuid = payload?.serverGuid ?? payload?.ServerGuid;
+            if (!serverGuid) return;
+            try {
+                const conn = getConnection();
+                if (conn?.ensureStarted) {
+                    await conn.ensureStarted();
+                }
+                await conn.invoke("LeaveServer", serverGuid);
+            } catch {
+            }
+            await loadServers();
+        };
+        onSignalREvent("ServerMembershipRemoved", handleMembershipRemoved);
+        return () => removeSignalREvent("ServerMembershipRemoved", handleMembershipRemoved);
+    }, []);
+
+    useEffect(() => {
+        const handleServerUpdated = (payload) => {
+            const serverGuid = payload?.serverGuid;
+            if (!serverGuid) return;
+            const updates = {};
+            if (payload.serverName !== undefined) updates.serverName = payload.serverName;
+            if (payload.iconKey !== undefined) updates.iconKey = payload.iconKey;
+            if (payload.ownerGuid !== undefined) updates.ownerGuid = payload.ownerGuid;
+            if (Object.keys(updates).length === 0) return;
+            setServers((prev) =>
+                prev.map((s) => (s.serverGuid === serverGuid ? { ...s, ...updates } : s))
+            );
+            setCurrentServer((prev) =>
+                prev?.serverGuid === serverGuid ? { ...prev, ...updates } : prev
+            );
+        };
+        onSignalREvent("ServerUpdated", handleServerUpdated);
+        return () => removeSignalREvent("ServerUpdated", handleServerUpdated);
     }, []);
 
     return {

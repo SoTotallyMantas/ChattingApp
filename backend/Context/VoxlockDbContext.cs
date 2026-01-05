@@ -285,6 +285,10 @@ namespace backend.Context
                 .HasKey(w => w.WhitelistGuid);
 
             model.Entity<RegistrationWhitelist>()
+                .HasIndex(w => w.Email)
+                .IsUnique();
+
+            model.Entity<RegistrationWhitelist>()
                 .HasOne( w => w.AddedByUser)
                 .WithMany()
                 .HasForeignKey(w => w.AddedBy)

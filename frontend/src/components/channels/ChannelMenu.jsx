@@ -1,6 +1,6 @@
 import { useOverlay } from "../../context/OverlayContext";
 
-export default function ChannelMenu({ channel, x, y, updateChannel, deleteChannel }) {
+export default function ChannelMenu({ channel, x, y, updateChannel, deleteChannel, createChannel }) {
     const { openOverlay, closeOverlay } = useOverlay();
 
     return (
@@ -47,7 +47,7 @@ export default function ChannelMenu({ channel, x, y, updateChannel, deleteChanne
                     closeOverlay();
                     openOverlay("create-channel", {
                         serverId: channel.serverGuid,
-                        createChannel: null 
+                        createChannel
                     });
                 }}
             />

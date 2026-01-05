@@ -5,6 +5,7 @@ import 'virtual:webrtc-adapter-global';
 import App from "./App";
 import Login from "./features/auth/login";
 import Register from "./features/auth/register";
+import AdminWhitelist from "./features/admin/AdminWhitelist";
 import ProtectedRoute from "./routing/ProtectedRoute";
 import OverlayRoot from "./common/OverlayRoot";
 import { OverlayProvider } from "./context/OverlayContext";
@@ -31,6 +32,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
                                     <Routes>
                                         <Route path="/login" element={<Login />} />
                                         <Route path="/register" element={<Register />} />
+                                        <Route
+                                            path="/admin/whitelist"
+                                            element={
+                                                <ProtectedRoute>
+                                                    <AdminWhitelist />
+                                                    <OverlayRoot />
+                                                </ProtectedRoute>
+                                            }
+                                        />
                                         <Route
                                             path="/*"
                                             element={

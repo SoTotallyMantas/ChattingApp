@@ -24,11 +24,11 @@ export default function DeleteMessageModal({ id, deleteMessage }) {
         <Modal onClose={closeOverlay}>
             <h2>Delete Message</h2>
 
-            <p style={{ color: "var(--text-secondary)" }}>
+            <p className="delete-message-modal-text">
                 Are you sure you want to delete this message?
             </p>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+            <div className="delete-message-modal-actions">
                 <Button variant="secondary" onClick={closeOverlay}>Cancel</Button>
                 <Button variant="danger" onClick={remove}>Delete</Button>
             </div>

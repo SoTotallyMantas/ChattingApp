@@ -1,46 +1,81 @@
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import { useToast } from "../../context/ToastContext";
 import RolesApi from "../../api/serverRoles";
-import { getServerMembers } from "../../api/serverMembers";
+import { useMembers } from "../../hooks/useMembers";
+import { useRoles } from "../../hooks/useRoles";
+import { useAuth } from "../../context/AuthContext";
+import { canActOnTarget, canAssignRole } from "../../utils/roleHierarchy";
+import "./UsersPanel.css";
+import { useAppState } from "../../context/AppStateContext";
 
 export default function UsersPanel({ serverId }) {
     const toast = useToast();
+    const [activeUser, setActiveUser] = useState(null);
+    const { members, loadMembers } = useMembers(serverId);
+    const { roles } = useRoles(serverId);
+    const { user: currentUser } = useAuth();
+    const {selectedServer} = useAppState();
+    const IsOwner = selectedServer?.ownerGuid === currentUser?.userGuid;
 
-    const [members, setMembers] = useState([]);
-    const [roles, setRoles] = useState([]);
-    const [activeUser, setActiveUser] = useState(null); 
+    const actorMember = useMemo(
+        () =>
+            members.find(
+                (m) =>
+                    m?.user?.userGuid === currentUser?.userGuid ||
+                    m?.userGuid === currentUser?.userGuid ||
+                    m?.userId === currentUser?.userGuid
+            ),
+        [members, currentUser?.userGuid]
+    );
 
-    const loadData = async () => {
-        try {
-            const membersList = await getServerMembers(serverId);
-            setMembers(membersList);
-
-            const rolesRes = await RolesApi.getRoles(serverId);
-            setRoles(rolesRes.data);
-        } catch {
-            toast.show("error", "Failed to load users or roles.");
-        }
+    const canModifyTarget = (target) => {
+        if (!target) return false;
+        return IsOwner || canActOnTarget(actorMember, target);
     };
 
-    useEffect(() => {
-        loadData();
-    }, [serverId]);
+    const canGiveRole = (role) =>{
+        if (!role) return false;
+        return IsOwner || canAssignRole(actorMember, role);
+    } 
 
     const assign = async (userGuid, roleGuid) => {
+        const targetMember = members.find((m) => m.user?.userGuid === userGuid || m.userGuid === userGuid);
+        const role = roles.find((r) => r.roleGuid === roleGuid);
+        if (!canModifyTarget(targetMember) || !canGiveRole(role)) {
+            toast.show("error", "You can't assign that role to this user.");
+            return;
+        }
         try {
             await RolesApi.assignRoleToUser(serverId, roleGuid, { userGuid });
             toast.show("success", "Role assigned.");
-            loadData();
+            loadMembers();
+            // reflect change in the open detail view so buttons swap immediately
+            setActiveUser((prev) => {
+                if (!prev || prev.user.userGuid !== userGuid) return prev;
+                const alreadyHas = prev.roles?.some((r) => r.roleGuid === roleGuid);
+                if (alreadyHas) return prev;
+                return { ...prev, roles: [...(prev.roles || []), role] };
+            });
         } catch {
             toast.show("error", "Failed to assign role.");
         }
     };
 
     const remove = async (userGuid, roleGuid) => {
+        const targetMember = members.find((m) => m.user?.userGuid === userGuid || m.userGuid === userGuid);
+        const role = roles.find((r) => r.roleGuid === roleGuid);
+        if (!canModifyTarget(targetMember) || !canGiveRole(role)) {
+            toast.show("error", "You can't change this role for that user.");
+            return;
+        }
         try {
             await RolesApi.removeRoleFromUser(serverId, roleGuid, { userGuid });
             toast.show("success", "Role removed.");
-            loadData();
+            loadMembers();
+            setActiveUser((prev) => {
+                if (!prev || prev.user.userGuid !== userGuid) return prev;
+                return { ...prev, roles: (prev.roles || []).filter((r) => r.roleGuid !== roleGuid) };
+            });
         } catch {
             toast.show("error", "Failed to remove role.");
         }
@@ -49,20 +84,20 @@ export default function UsersPanel({ serverId }) {
 
     if (!activeUser) {
         return (
-            <div style={{ color: "var(--text-primary)" }}>
-                <h2>Manage Users</h2>
+        <div className="list-panel users-panel">
+            <h2>Manage Users</h2>
 
                 {members.map((m) => (
-                    <div key={m.user.userGuid} style={memberRow}>
+                    <div key={m.user.userGuid} className="user-member-row">
                         <div>
                             <strong>{m.user.userName}</strong>
 
-                            <div style={{ marginTop: 6 }}>
+                            <div className="user-roles">
                                 {m.roles.length === 0 ? (
-                                    <span style={{ opacity: 0.6 }}>No roles</span>
+                                    <span className="user-no-roles">No roles</span>
                                 ) : (
                                     m.roles.map((r) => (
-                                        <span key={r.roleGuid} style={roleBadge(r.color)}>
+                                        <span key={r.roleGuid} className="user-role-badge" style={{ background: r.color || "var(--bg-hover)" }}>
                                             {r.roleName}
                                         </span>
                                     ))
@@ -71,8 +106,16 @@ export default function UsersPanel({ serverId }) {
                         </div>
 
                         <button
-                            style={manageBtn}
-                            onClick={() => setActiveUser(m)}
+                            className="user-manage-btn"
+                            onClick={() => {
+                                if (!canModifyTarget(m)) {
+                                    toast.show("error", "You can't manage this user.");
+                                    return;
+                                }
+                                setActiveUser(m);
+                            }}
+                            aria-disabled={!canModifyTarget(m)}
+                            data-disabled={!canModifyTarget(m)}
                         >
                             Edit Roles
                         </button>
@@ -84,8 +127,8 @@ export default function UsersPanel({ serverId }) {
 
  
     return (
-        <div style={{ color: "var(--text-primary)" }}>
-            <button style={backBtn} onClick={() => setActiveUser(null)}>
+        <div className="list-panel users-panel">
+            <button className="user-back-btn" onClick={() => setActiveUser(null)}>
                  Back
             </button>
 
@@ -95,90 +138,33 @@ export default function UsersPanel({ serverId }) {
                 const hasRole = activeUser.roles.some(r => r.roleGuid === role.roleGuid);
 
                 return (
-                    <div key={role.roleGuid} style={roleRow}>
+                    <div key={role.roleGuid} className="user-role-row">
                         <span>{role.roleName}</span>
 
-                        {hasRole ? (
-                            <button
-                                style={removeBtn}
-                                onClick={() => remove(activeUser.user.userGuid, role.roleGuid)}
-                            >
-                                Remove
-                            </button>
-                        ) : (
-                            <button
-                                style={assignBtn}
-                                onClick={() => assign(activeUser.user.userGuid, role.roleGuid)}
-                            >
-                                Assign
-                            </button>
-                        )}
+                        <div className="actions-row">
+                            {hasRole ? (
+                                <button
+                                    className="user-remove-btn"
+                                    onClick={() => remove(activeUser.user.userGuid, role.roleGuid)}
+                                    aria-disabled={!canModifyTarget(activeUser) || !canGiveRole(role)}
+                                    data-disabled={!canModifyTarget(activeUser) || !canGiveRole(role)}
+                                >
+                                    Remove
+                                </button>
+                            ) : (
+                                <button
+                                    className="user-assign-btn"
+                                    onClick={() => assign(activeUser.user.userGuid, role.roleGuid)}
+                                    aria-disabled={!canModifyTarget(activeUser) || !canGiveRole(role)}
+                                    data-disabled={!canModifyTarget(activeUser) || !canGiveRole(role)}
+                                >
+                                    Assign
+                                </button>
+                            )}
+                        </div>
                     </div>
                 );
             })}
         </div>
     );
 }
-
-
-const memberRow = {
-    padding: "12px",
-    background: "var(--bg-tertiary)",
-    borderRadius: 6,
-    marginBottom: 10,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-};
-
-const roleBadge = (color) => ({
-    background: color || "var(--bg-hover)",
-    padding: "3px 6px",
-    borderRadius: 4,
-    marginRight: 6,
-    fontSize: 12,
-});
-
-const manageBtn = {
-    padding: "6px 10px",
-    background: "var(--accent)",
-    color: "white",
-    border: "none",
-    borderRadius: 4,
-    cursor: "pointer",
-};
-
-const backBtn = {
-    padding: "6px 12px",
-    marginBottom: 15,
-    background: "transparent",
-    color: "var(--text-secondary)",
-    border: `1px solid var(--border-color)`,
-    borderRadius: 4,
-    cursor: "pointer",
-};
-
-const roleRow = {
-    padding: "8px 0",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-};
-
-const assignBtn = {
-    background: "#3ba55d",
-    color: "white",
-    border: "none",
-    padding: "4px 10px",
-    borderRadius: 4,
-    cursor: "pointer",
-};
-
-const removeBtn = {
-    background: "var(--danger)",
-    color: "white",
-    border: "none",
-    padding: "4px 10px",
-    borderRadius: 4,
-    cursor: "pointer",
-};

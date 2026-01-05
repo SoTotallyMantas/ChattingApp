@@ -38,7 +38,7 @@ namespace backend.Middleware
                 await context.Response.WriteAsJsonAsync(new
                 {
                     error = "bad_request",
-                    message = "Something went wrong. Please try again."
+                    message = ex.Message
                 });
             }
             catch(AmazonS3Exception ex)

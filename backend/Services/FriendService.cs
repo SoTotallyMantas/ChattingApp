@@ -18,21 +18,59 @@ namespace backend.Services
                 .Include(f => f.Addressee)
                 .Where(f => f.Status == FriendshipStatuses.Accepted &&
                             (f.RequesterGuid == userGuid || f.AddresseeGuid == userGuid))
-                .Select(f => new
+                .Select(f => Map(f, f.RequesterGuid == userGuid ? f.Addressee : f.Requester, userGuid))
+                .ToListAsync();
+        }
+        public async Task<List<Guid>> GetFriendGuidsAsync(Guid userGuid)
+        {
+            return await _db.Friendships
+                .Where(f => f.Status == FriendshipStatuses.Accepted &&
+                            (f.RequesterGuid == userGuid || f.AddresseeGuid == userGuid))
+                .Select(f => f.RequesterGuid == userGuid ? f.Addressee.UserGuid : f.RequesterGuid)
+                .ToListAsync();
+        }
+        public async Task<List<FriendResponseDto>> GetIncomingRequestsAsync(Guid userGuid)
+        {
+            return await _db.Friendships
+                .Include(f => f.Requester)
+                .Include(f => f.Addressee)
+                .Where(f => f.Status == FriendshipStatuses.Pending &&
+                            f.AddresseeGuid == userGuid)
+                .Select(f => new FriendResponseDto
                 {
-                    Friendship = f,
-                    FriendUser = f.RequesterGuid == userGuid ? f.Addressee : f.Requester
+                    FriendshipGuid = f.FriendshipGuid,
+                    FriendGuid = f.Requester.UserGuid,
+                    UserName = f.Requester.UserName,
+                    DisplayName = f.Requester.DisplayName,
+                    AvatarKey = f.Requester.AvatarKey,
+                    Presence = f.Requester.Status,
+                    RelationshipStatus = f.Status,
+                    CreatedAt = f.CreatedAt,
+                    IsIncoming = true,
+                    IsOutgoing = false
                 })
-                .Select(x => new FriendResponseDto
+                .ToListAsync();
+        }
+
+        public async Task<List<FriendResponseDto>> GetOutgoingRequestsAsync(Guid userGuid)
+        {
+            return await _db.Friendships
+                .Include(f => f.Requester)
+                .Include(f => f.Addressee)
+                .Where(f => f.Status == FriendshipStatuses.Pending &&
+                            f.RequesterGuid == userGuid)
+                .Select(f => new FriendResponseDto
                 {
-                    FriendshipGuid = x.Friendship.FriendshipGuid,
-                    FriendGuid = x.FriendUser.UserGuid,
-                    UserName = x.FriendUser.UserName,
-                    DisplayName = x.FriendUser.DisplayName,
-                    AvatarKey = x.FriendUser.AvatarKey,
-                    Presence = x.FriendUser.Status,
-                    RelationshipStatus = x.Friendship.Status,
-                    CreatedAt = x.Friendship.CreatedAt
+                    FriendshipGuid = f.FriendshipGuid,
+                    FriendGuid = f.Addressee.UserGuid,
+                    UserName = f.Addressee.UserName,
+                    DisplayName = f.Addressee.DisplayName,
+                    AvatarKey = f.Addressee.AvatarKey,
+                    Presence = f.Addressee.Status,
+                    RelationshipStatus = f.Status,
+                    CreatedAt = f.CreatedAt,
+                    IsIncoming = false,
+                    IsOutgoing = true
                 })
                 .ToListAsync();
         }
@@ -61,15 +99,25 @@ namespace backend.Services
 
             if (existing != null)
             {
-                if (existing.Status != FriendshipStatuses.Accepted)
+                if (existing.Status == FriendshipStatuses.Blocked)
+                    throw new InvalidOperationException("You cannot add this user.");
+
+                
+                if (existing.Status == FriendshipStatuses.Pending &&
+                    existing.RequesterGuid == friendGuid &&
+                    existing.AddresseeGuid == requesterGuid)
                 {
                     existing.Status = FriendshipStatuses.Accepted;
                     existing.UpdatedAt = DateTime.UtcNow;
                     await _db.SaveChangesAsync();
+
+                    var acceptedFriend = existing.RequesterGuid == requesterGuid ? existing.Addressee : existing.Requester;
+                    return Map(existing, acceptedFriend, requesterGuid);
                 }
 
+                // If already sent or already friends, just return current state
                 var existingFriend = existing.RequesterGuid == requesterGuid ? existing.Addressee : existing.Requester;
-                return Map(existing, existingFriend);
+                return Map(existing, existingFriend, requesterGuid);
             }
 
             var friendship = new Friendships
@@ -77,7 +125,7 @@ namespace backend.Services
                 FriendshipGuid = Guid.NewGuid(),
                 RequesterGuid = requesterGuid,
                 AddresseeGuid = friendGuid,
-                Status = FriendshipStatuses.Accepted,
+                Status = FriendshipStatuses.Pending,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -85,10 +133,130 @@ namespace backend.Services
             _db.Friendships.Add(friendship);
             await _db.SaveChangesAsync();
 
-            return Map(friendship, friend);
+            return Map(friendship, friend, requesterGuid);
         }
 
-        private static FriendResponseDto Map(Friendships friendship, Users friend)
+        public async Task<FriendResponseDto> AcceptFriendAsync(Guid userGuid, Guid friendshipGuid)
+        {
+            var friendship = await _db.Friendships
+                .Include(f => f.Requester)
+                .Include(f => f.Addressee)
+                .FirstOrDefaultAsync(f => f.FriendshipGuid == friendshipGuid);
+
+            if (friendship == null)
+                throw new InvalidOperationException("Request not found.");
+
+            if (friendship.AddresseeGuid != userGuid)
+                throw new UnauthorizedAccessException("Only the recipient can accept the request.");
+
+            if (friendship.Status == FriendshipStatuses.Blocked)
+                throw new InvalidOperationException("This request is blocked.");
+
+            friendship.Status = FriendshipStatuses.Accepted;
+            friendship.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            var friendUser = friendship.Requester;
+            return Map(friendship, friendUser, userGuid);
+        }
+
+        public async Task RejectFriendAsync(Guid userGuid, Guid friendshipGuid)
+        {
+            var friendship = await _db.Friendships
+                .FirstOrDefaultAsync(f => f.FriendshipGuid == friendshipGuid);
+
+            if (friendship == null)
+                return;
+
+            if (friendship.AddresseeGuid != userGuid)
+                throw new UnauthorizedAccessException("Only the recipient can reject the request.");
+
+            _db.Friendships.Remove(friendship);
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task<FriendResponseDto> BlockFriendAsync(Guid userGuid, Guid friendshipGuid)
+        {
+            var friendship = await _db.Friendships
+                .Include(f => f.Requester)
+                .Include(f => f.Addressee)
+                .FirstOrDefaultAsync(f => f.FriendshipGuid == friendshipGuid);
+
+            if (friendship == null)
+                throw new InvalidOperationException("Friendship not found.");
+
+            if (friendship.RequesterGuid != userGuid && friendship.AddresseeGuid != userGuid)
+                throw new UnauthorizedAccessException("You cannot block this request.");
+
+            friendship.Status = FriendshipStatuses.Blocked;
+            friendship.UpdatedAt = DateTime.UtcNow;
+            friendship.BlockedByGuid = userGuid;
+            await _db.SaveChangesAsync();
+
+            var friendUser = friendship.RequesterGuid == userGuid ? friendship.Addressee : friendship.Requester;
+            return Map(friendship, friendUser, userGuid);
+        }
+        public async Task<List<FriendResponseDto>> GetBlockedAsync(Guid userGuid)
+        {
+            return await _db.Friendships
+                   .Include(friend => friend.Requester)
+                   .Include(friend => friend.Addressee)
+                   .Where(friend => friend.Status == FriendshipStatuses.Blocked &&
+                                    friend.BlockedByGuid == userGuid)
+                    .Select(friend => Map(friend, friend.RequesterGuid == userGuid ? friend.Addressee : friend.Requester, userGuid))
+                    .ToListAsync();
+        }
+
+        public async Task UnblockFriendAsync(Guid userGuid, Guid friendshipGuid)
+        {
+            var friendship = await _db.Friendships
+                .FirstOrDefaultAsync(friend => friend.FriendshipGuid == friendshipGuid);
+
+            if(friendship == null)
+            {
+                throw new InvalidOperationException("Friendship not found.");
+            }
+
+            if(friendship.BlockedByGuid != userGuid)
+            {
+                throw new UnauthorizedAccessException("You cannot unblock this friendship.");
+            }
+
+            _db.Friendships.Remove(friendship);
+            await _db.SaveChangesAsync();
+        }
+        public async Task RemoveFriendAsync(Guid userGuid, Guid friendshipGuid)
+        {
+            var friendship = await _db.Friendships
+                .FirstOrDefaultAsync(f => f.FriendshipGuid == friendshipGuid);
+
+            if (friendship == null)
+                return;
+
+            if (friendship.RequesterGuid != userGuid && friendship.AddresseeGuid != userGuid)
+                throw new UnauthorizedAccessException("You cannot remove this friendship.");
+
+            _db.Friendships.Remove(friendship);
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task<(Guid RequesterGuid, Guid AddresseeGuid)> GetFriendshipUsersAsync(Guid friendshipGuid)
+        {
+            var friendship = await _db.Friendships
+                .AsNoTracking()
+                .Where(f => f.FriendshipGuid == friendshipGuid)
+                .Select(f => new { f.RequesterGuid, f.AddresseeGuid })
+                .FirstOrDefaultAsync();
+
+            if (friendship == null)
+            {
+                return (Guid.Empty, Guid.Empty);
+            }
+
+            return (friendship.RequesterGuid, friendship.AddresseeGuid);
+        }
+
+        private static FriendResponseDto Map(Friendships friendship, Users friend, Guid currentUserGuid)
         {
             return new FriendResponseDto
             {
@@ -99,7 +267,9 @@ namespace backend.Services
                 AvatarKey = friend.AvatarKey,
                 Presence = friend.Status,
                 RelationshipStatus = friendship.Status,
-                CreatedAt = friendship.CreatedAt
+                CreatedAt = friendship.CreatedAt,
+                IsIncoming = friendship.AddresseeGuid == currentUserGuid,
+                IsOutgoing = friendship.RequesterGuid == currentUserGuid
             };
         }
     }

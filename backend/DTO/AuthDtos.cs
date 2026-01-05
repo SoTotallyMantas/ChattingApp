@@ -15,6 +15,11 @@ namespace backend.DTO.AuthDtos
         public required string NewPassword { get; set; }
     }
 
+    public class DeleteAccountRequestDto
+    {
+        public required string Password { get; set; }
+    }
+
     public class LoginRequestDto
     {
         public string? Email { get; set; }

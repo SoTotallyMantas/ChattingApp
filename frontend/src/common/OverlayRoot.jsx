@@ -15,33 +15,30 @@ import CreateServerModal from "../components/servers/CreateServerModal";
 import JoinServerModal from "../components/servers/JoinServerModal";
 import ServerContextMenu from "../components/servers/ServerContextMenu";
 import ConfirmModal from "./ConfirmModal";
+import UserSearchModal from "../components/friends/UserSearchModal";
 
 export default function OverlayRoot() {
     const { overlay } = useOverlay();
     if (!overlay) return null;
 
     const { type, payload } = overlay;
-    let modal = null;
-    let isFloating = false;
+    let modal = payload?.component ?? null;
+    let isFloating = type === "user-actions";
 
+    if (!modal) {
     switch (type) {
-        
         case "message-menu":
             modal = <MessageMenu {...payload} />;
             isFloating = true;
             break;
-
         case "channel-menu":
             modal = <ChannelMenu {...payload} />;
             isFloating = true;
             break;
-
         case "server-menu":
             modal = <ServerContextMenu {...payload} />;
             isFloating = true;
             break;
-
-        
         case "delete-message":
             modal = <DeleteMessageModal {...payload} />;
             break;
@@ -63,20 +60,21 @@ export default function OverlayRoot() {
         case "create-channel":
             modal = <CreateChannelModal {...payload} />;
             break;
-
         case "edit-channel":
             modal = <EditChannelModal {...payload} />;
             break;
-
         case "delete-channel":
             modal = <DeleteChannelModal {...payload} />;
             break;
         case "confirm":
             modal = <ConfirmModal {...payload} />;
             break;
-
+        case "user-search":
+            modal = <UserSearchModal {...payload} />;
+            break;
         default:
             return null;
+    }
     }
 
    

@@ -1,0 +1,76 @@
+.user-member-row {
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.user-roles {
+    margin-top: 6px;
+}
+
+.user-role-badge {
+    padding: 3px 6px;
+    border-radius: 4px;
+    margin-right: 6px;
+    font-size: 12px;
+    display: inline-block;
+}
+
+.user-no-roles {
+    opacity: 0.6;
+}
+
+.user-manage-btn {
+    padding: 6px 10px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.user-manage-btn[data-disabled="true"],
+.user-assign-btn[data-disabled="true"],
+.user-remove-btn[data-disabled="true"] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.user-back-btn {
+    padding: 6px 12px;
+    margin-bottom: 15px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.user-role-row {
+    padding: 8px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.user-assign-btn {
+    background: #3ba55d;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.user-remove-btn {
+    background: var(--danger);
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}

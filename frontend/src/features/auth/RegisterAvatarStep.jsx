@@ -51,112 +51,68 @@ export default function RegisterAvatarStep({ initialName, onSkip, onComplete }) 
     const initialLetter = (initialName || "U").charAt(0).toUpperCase();
 
     return (
-        <div style={container}>
-            <h2 style={{ margin: "0 0 6px" }}>Pick an avatar (optional)</h2>
-            <p style={{ margin: "0 0 18px", color: "#888" }}>
+        <div className="auth-avatar-step">
+            <h2 className="auth-avatar-title">Pick an avatar (optional)</h2>
+            <p className="auth-avatar-subtitle">
                 Upload a profile image or skip for now. You can change this in settings later.
             </p>
 
-            <div style={previewRow}>
-                <div style={avatarCircle}>
+            <div className="auth-avatar-preview">
+                <div className="auth-avatar-circle">
                     {preview ? (
-                        <img src={preview} alt="Avatar preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <img src={preview} alt="Avatar preview" className="auth-avatar-image" />
                     ) : (
-                        <span style={{ fontSize: 28, fontWeight: 700 }}>{initialLetter}</span>
+                        <span className="auth-avatar-initial">{initialLetter}</span>
                     )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <button type="button" onClick={() => inputRef.current?.click()} style={primaryBtn}>
+                <div className="auth-avatar-controls">
+                    <button
+                        type="button"
+                        onClick={() => inputRef.current?.click()}
+                        className="button"
+                    >
                         Choose image
                     </button>
                     <input
                         ref={inputRef}
                         type="file"
                         accept="image/*"
-                        style={{ display: "none" }}
+                        className="auth-avatar-file"
                         onChange={pickFile}
                     />
                     {preview && (
-                        <button type="button" onClick={clearFile} style={secondaryBtn}>
+                        <button
+                            type="button"
+                            onClick={clearFile}
+                            className="button"
+                        >
                             Remove
                         </button>
                     )}
-                    <div style={{ fontSize: 12, color: "#777" }}>PNG/JPG up to 7MB.</div>
+                    <div className="auth-avatar-hint">PNG/JPG up to 7MB.</div>
                 </div>
             </div>
 
-            {error && <div style={errorBox}>{error}</div>}
+            {error && <div className="auth-avatar-error">{error}</div>}
 
-            <div style={actions}>
-                <button type="button" onClick={onSkip} style={secondaryBtn}>
+            <div className="auth-avatar-actions">
+                <button
+                    type="button"
+                    onClick={onSkip}
+                    className="button"
+                >
                     Skip for now
                 </button>
-                <button type="button" onClick={save} style={primaryBtn} disabled={saving}>
+                <button
+                    type="button"
+                    onClick={save}
+                    className="button"
+                    disabled={saving}
+                >
                     {saving ? "Saving..." : file ? "Save and continue" : "Use default"}
                 </button>
             </div>
         </div>
     );
 }
-
-const container = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-};
-
-const previewRow = {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-};
-
-const avatarCircle = {
-    width: 64,
-    height: 64,
-    borderRadius: "50%",
-    background: "#1f2937",
-    border: "1px solid #333",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#e5e7eb",
-    overflow: "hidden",
-};
-
-const primaryBtn = {
-    padding: "10px 14px",
-    background: "#5865f2",
-    color: "white",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer",
-    fontWeight: 700,
-};
-
-const secondaryBtn = {
-    padding: "9px 14px",
-    background: "#2f3136",
-    color: "white",
-    border: "1px solid #3a3c43",
-    borderRadius: 8,
-    cursor: "pointer",
-    fontWeight: 600,
-};
-
-const actions = {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-    marginTop: 10,
-};
-
-const errorBox = {
-    padding: "10px 12px",
-    borderRadius: 8,
-    background: "rgba(239, 68, 68, 0.12)",
-    border: "1px solid rgba(239, 68, 68, 0.4)",
-    color: "#fecdd3",
-    fontSize: 13,
-};

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useMessages } from "../../context/MessagesContext";
 import { useOverlay } from "../../context/OverlayContext";
 import { downloadAttachment } from "../../api/messages";
+import { uploadAttachment, deleteAttachment } from "../../api/messageAttachments";
 import { useAuth } from "../../context/AuthContext";
 import { useAppState } from "../../context/AppStateContext";
 
@@ -15,10 +16,58 @@ export default function MessageBubble({ msg }) {
     const [editText, setEditText] = useState(msg.content);
     const [hovered, setHovered] = useState(false);
     const [previews, setPreviews] = useState({});
+    const [newFiles, setNewFiles] = useState([]);
+    const [newPreviews, setNewPreviews] = useState({});
     const [lightbox, setLightbox] = useState(null);
 
     const editContainerRef = useRef(null);
     const textareaRef = useRef(null);
+    const fileInputRef = useRef(null);
+
+    const fileKey = (f) => `${f.name}-${f.size}-${f.lastModified}`;
+
+    const addFiles = (files) => {
+        setNewFiles((prev) => {
+            const existing = new Set(prev.map(fileKey));
+            const merged = [...prev];
+            const nextPreviews = {};
+
+            files.forEach((f) => {
+                const key = fileKey(f);
+                if (!existing.has(key)) {
+                    merged.push(f);
+                    existing.add(key);
+                    if (f.type?.startsWith("image/")) {
+                        nextPreviews[key] = URL.createObjectURL(f);
+                    }
+                }
+            });
+
+            if (Object.keys(nextPreviews).length) {
+                setNewPreviews((p) => ({ ...p, ...nextPreviews }));
+            }
+
+            return merged;
+        });
+    };
+
+    const removeFile = (key) => {
+        setNewFiles((prev) => prev.filter((f) => fileKey(f) !== key));
+        setNewPreviews((prev) => {
+            const copy = { ...prev };
+            if (copy[key]) {
+                URL.revokeObjectURL(copy[key]);
+                delete copy[key];
+            }
+            return copy;
+        });
+    };
+
+    const clearNewFiles = () => {
+        Object.values(newPreviews).forEach((url) => URL.revokeObjectURL(url));
+        setNewPreviews({});
+        setNewFiles([]);
+    };
 
     useEffect(() => {
         if (!overlay) return;
@@ -36,29 +85,49 @@ export default function MessageBubble({ msg }) {
 
         const perms = selectedServer?.permissions || [];
         const canManageMessages = perms.includes("MANAGE_MESSAGES");
-        const canEditOrDelete = canManageMessages || user?.userGuid === msg.userGuid;
+        const canEdit = user?.userGuid === msg.userGuid;
+        const canDelete = canManageMessages || user?.userGuid === msg.userGuid;
 
         openOverlay("message-menu", {
             id: msg.messageGuid,
+            message: msg,
             x: e.clientX,
             y: e.clientY,
             deleteMessage,
-            canEdit: canEditOrDelete,
-            canDelete: canEditOrDelete
+            canEdit,
+            canDelete,
+            startReply
         });
     };
 
     const saveEdit = async () => {
-        await editMessage({
-            messageGuid: msg.messageGuid,
-            NewContent: editText
-        });
-        setIsEditing(false);
-        closeOverlay();
+        const trimmed = (editText || "").trim();
+        const existingAttachments = msg.attachments?.length || 0;
+        if (!trimmed && existingAttachments === 0 && newFiles.length === 0) {
+            alert("Message must have text or at least one attachment.");
+            return;
+        }
+
+        try {
+            await editMessage({
+                messageGuid: msg.messageGuid,
+                NewContent: trimmed
+            });
+
+            for (const f of newFiles) {
+                await uploadAttachment(msg.messageGuid, f);
+            }
+            clearNewFiles();
+            setIsEditing(false);
+            closeOverlay();
+        } catch (e) {
+            console.error("Edit failed", e);
+        }
     };
 
     const cancelEdit = () => {
         setEditText(msg.content);
+        clearNewFiles();
         setIsEditing(false);
         closeOverlay();
     };
@@ -130,82 +199,62 @@ export default function MessageBubble({ msg }) {
                 onContextMenu={onRightClick}
                 onMouseEnter={() => setHovered(true)}
                 onMouseLeave={() => setHovered(false)}
-                style={{
-                    width: "100%",
-                    padding: "4px 0",
-                    marginBottom: 3,
-                }}
+                className={`message-bubble${hovered ? " message-bubble--hovered" : ""}`}
             >
+                {!msg.firstInGroup && (
+                    <div className="message-bubble-time">
+                        {msg.timeLabel}
+                    </div>
+                )}
                 {!isEditing ? (
-                    <div style={{
-                        width: "calc(100% - 16px)",
-                        padding: "8px 12px",
-                        borderRadius: 10,
-                        background: hovered ? "var(--bg-tertiary)" : "transparent",
-                        marginRight: 16,
-                        transition: "background 120ms ease",
-                        whiteSpace: "pre-wrap",
-                        color: "var(--text-primary)"
-                    }}>
+                    <div className="message-bubble-content">
                         {repliedMessage && (
                             <div
                                 onClick={jumpToReplied}
-                                style={{
-                                    padding: "6px 8px",
-                                    borderLeft: `3px solid var(--border-color)`,
-                                    background: "var(--bg-primary)",
-                                    borderRadius: 8,
-                                    marginBottom: 6,
-                                    cursor: "pointer"
-                                }}
+                                className="message-bubble-reply"
                                 title="Jump to replied message"
                             >
-                                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
-                                    <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Replying to</span>
-                                    <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                                <div className="message-bubble-reply-meta">
+                                    <span className="message-bubble-reply-label">Replying to</span>
+                                    <span className="message-bubble-reply-name">
                                         {repliedMessage.displayName || repliedMessage.userName || "User"}
                                     </span>
                                 </div>
-                                <div style={{ fontSize: 13, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <div className="message-bubble-reply-text">
                                     {repliedMessage.content || "(no text)"}
                                 </div>
                             </div>
                         )}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="message-bubble-body">
                             <span>{msg.content}</span>
-                            {msg.timeLabel && (
-                                <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>
-                                    {msg.timeLabel}
-                                </span>
-                            )}
                             {msg.editedAt && (
-                                <span style={{ opacity: 0.6, fontSize: 12 }}>
+                                <span className="message-bubble-edited">
                                     (edited)
                                 </span>
                             )}
                         </div>
 
                         {msg.attachments?.length > 0 && (
-                            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div className="message-bubble-attachments">
                                 {msg.attachments.map((att) => (
-                                    <div key={att.attachmentGuid} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <div key={att.attachmentGuid} className="message-bubble-attachment">
                                         {previews[att.attachmentGuid]?.url && att.contentType?.startsWith("image/") ? (
                                             <img
                                                 src={previews[att.attachmentGuid].url}
                                                 alt={att.fileName}
-                                                style={{ maxWidth: 200, maxHeight: 140, borderRadius: 8, border: `1px solid var(--border-color)`, cursor: "pointer" }}
+                                                className="message-bubble-attachment-image"
                                                 onClick={() => setLightbox(previews[att.attachmentGuid].url)}
                                             />
                                         ) : previews[att.attachmentGuid]?.url ? (
                                             <a
                                                 href={previews[att.attachmentGuid].url}
                                                 download={att.fileName || "attachment"}
-                                                style={{ color: "var(--accent)", fontWeight: 600 }}
+                                                className="message-bubble-attachment-link"
                                             >
                                                 Download {att.fileName || "file"}
                                             </a>
                                         ) : (
-                                            <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>Loading...</span>
+                                            <span className="message-bubble-attachment-loading">Loading...</span>
                                         )}
                                     </div>
                                 ))}
@@ -213,7 +262,7 @@ export default function MessageBubble({ msg }) {
                         )}
                     </div>
                 ) : (
-                    <div ref={editContainerRef}>
+                    <div ref={editContainerRef} className="message-bubble-edit">
                         <textarea
                             ref={textareaRef}
                             value={editText}
@@ -228,32 +277,103 @@ export default function MessageBubble({ msg }) {
                                     saveEdit();
                                 }
                             }}
-                            style={{
-                                width: "100%",
-                                minHeight: 40,
-                                padding: 10,
-                                borderRadius: 10,
-                                border: "none",
-                                background: "var(--bg-tertiary)",
-                                resize: "none",
-                                color: "var(--text-primary)",
-                                outline: "none",
-                                boxShadow: hovered ? "0 0 0 1px var(--border-color)" : "none",
-                                overflow: "hidden"
-                            }}
+                            className="message-bubble-edit-textarea"
                         />
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                        <div className="message-bubble-edit-actions">
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="button"
+                            >
+                                Add attachment
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                className="message-bubble-file-input"
+                                onChange={(e) => {
+                                    const picked = Array.from(e.target.files || []);
+                                    addFiles(picked);
+                                    e.target.value = "";
+                                }}
+                            />
+                        </div>
+                        {(msg.attachments?.length > 0 || newFiles.length > 0) && (
+                            <div className="message-bubble-attachment-list">
+                                {msg.attachments?.map((att) => (
+                                    <div
+                                        key={att.attachmentGuid}
+                                        className="message-bubble-attachment-row"
+                                    >
+                                        <div className="message-bubble-attachment-info">
+                                            <div className="message-bubble-attachment-name">
+                                                {att.fileName || att.attachmentGuid}
+                                            </div>
+                                            <div className="message-bubble-attachment-type">{att.contentType || "file"}</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                try {
+                                                    await deleteAttachment(msg.messageGuid, att.attachmentGuid);
+                                                } catch (e) {
+                                                    console.error("Failed to delete attachment", e);
+                                                    alert("Failed to delete attachment");
+                                                }
+                                            }}
+                                            className="button"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                                {newFiles.map((f) => {
+                                    const key = fileKey(f);
+                                    return (
+                                        <div
+                                            key={key}
+                                            className="message-bubble-attachment-row"
+                                        >
+                                            {newPreviews[key] && f.type?.startsWith("image/") ? (
+                                                <img
+                                                    src={newPreviews[key]}
+                                                    alt={f.name}
+                                                    className="message-bubble-attachment-thumb"
+                                                />
+                                            ) : (
+                                                <span className="message-bubble-attachment-size">{Math.ceil(f.size / 1024)} KB</span>
+                                            )}
+                                            <div className="message-bubble-attachment-info">
+                                                <div className="message-bubble-attachment-name">
+                                                    {f.name}
+                                                </div>
+                                                <div className="message-bubble-attachment-type">{f.type || "file"}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeFile(key)}
+                                                className="button"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div className="message-bubble-edit-footer">
                             <button
                                 type="button"
                                 onClick={cancelEdit}
-                                style={secondaryBtn}
+                                className="button"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="button"
                                 onClick={saveEdit}
-                                style={primaryBtn}
+                                className="button"
                             >
                                 Save
                             </button>
@@ -263,21 +383,13 @@ export default function MessageBubble({ msg }) {
             </div>
             {lightbox && (
                 <div
-                    style={{
-                        position: "fixed",
-                        inset: 0,
-                        background: "rgba(0,0,0,0.7)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        zIndex: 1000
-                    }}
+                    className="message-bubble-lightbox"
                     onClick={() => setLightbox(null)}
                 >
                     <img
                         src={lightbox}
                         alt="Attachment"
-                        style={{ maxWidth: "90vw", maxHeight: "90vh", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.4)" }}
+                        className="message-bubble-lightbox-image"
                         onClick={(e) => e.stopPropagation()}
                     />
                 </div>
@@ -285,22 +397,3 @@ export default function MessageBubble({ msg }) {
         </>
     );
 }
-
-const baseBtn = {
-    padding: "8px 12px",
-    border: "none",
-    borderRadius: 6,
-    cursor: "pointer",
-    color: "white",
-    fontWeight: 600
-};
-
-const secondaryBtn = {
-    ...baseBtn,
-    background: "#4f535c"
-};
-
-const primaryBtn = {
-    ...baseBtn,
-    background: "#5865f2"
-};

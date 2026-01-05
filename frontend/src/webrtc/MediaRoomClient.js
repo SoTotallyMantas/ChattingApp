@@ -13,18 +13,20 @@ export class MediaRoomClient {
         this.setLocalStream = setLocalStream;
         this.addRemoteStream = addRemoteStream;
         this.removeRemoteStream = removeRemoteStream;
-
+        this.videoEnabled = false;
+        this.audioEnabled = true;
         this.janus = null;
         this.publisherHandle = null;
         this.subscriberHandles = new Map();
         this.remoteStreams = new Map();
         this.localStream = null;
         this.myId = null;
+        this.isJoined = false;
         this.privateId = null;
         this.audioDeviceId = null;
         this.remoteAudioEnabled = true;
+        this.feedSubscriptions = new Map();
     }
-
     async initialize() {
         const serverUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/janus`;
         this.janus = new Janus({
@@ -64,6 +66,10 @@ export class MediaRoomClient {
             console.error("Publisher not ready");
             return;
         }
+        if(this.isJoined) {
+            console.warn("Already joined room");
+            return;
+        }
 
         if (!this.localStream) {
             try {
@@ -71,9 +77,9 @@ export class MediaRoomClient {
                     audio: this.audioDeviceId
                         ? { deviceId: { exact: this.audioDeviceId } }
                         : true,
-                    video: false,
+                    video: this.videoEnabled,
                 });
-                console.log("Local audio tracks:", this.localStream.getAudioTracks());
+                
                 this.setLocalStream(this.localStream);
             } catch (err) {
                 console.error("Failed to getUserMedia:", err);
@@ -99,16 +105,17 @@ export class MediaRoomClient {
         if (event === "joined") {
             this.myId = msg["id"];
             this.privateId = msg["private_id"];
-            console.log("Joined video room, my id:", this.myId);
+            this.isJoined = true;
+            
 
             this.publishOwnFeed();  
 
             (msg["publishers"] || []).forEach(pub => {
-                this.newRemoteFeed(pub.id, pub.display);
+                this._ensureRemoteFeed(pub);
             });
         } else if (event === "event") {
             (msg["publishers"] || []).forEach(pub => {
-                this.newRemoteFeed(pub.id, pub.display);
+                this._ensureRemoteFeed(pub);
             });
             if (msg["leaving"]) {
                 this.detachRemoteFeed(msg["leaving"]);
@@ -116,7 +123,7 @@ export class MediaRoomClient {
         }
 
         if (jsep) {
-            console.log("Publisher received JSEP:", jsep);
+            
             this.publisherHandle.handleRemoteJsep({ jsep });
         }
     };
@@ -125,32 +132,30 @@ export class MediaRoomClient {
         if (!this.publisherHandle || !this.localStream) return;
 
         this.publisherHandle.createOffer({
-            media: { audioSend: true, videoSend: false },
+            media: { audioSend: this.audioEnabled, videoSend: this.videoEnabled },
             stream: this.localStream,
             success: jsep => {
-                console.group("%c Publisher Offer SDP", "color:green");
-                console.log(jsep.sdp);
-                console.groupEnd();
-
                 this.publisherHandle.send({
-                    message: { request: "configure", audio: true, video: false },
+                    message: { request: "configure", audio: this.audioEnabled, video: this.videoEnabled },
                     jsep,
                 });
 
-                this._printStats();
+               
             },
-            error: err => console.error("[Publish offer error]", err),
+            
         });
     };
 
     setAudioEnabled(enabled) {
+        this.audioEnabled = enabled;
+
         if (this.localStream) {
             this.localStream.getAudioTracks().forEach(t => {
                 t.enabled = enabled;
             });
         }
         try {
-            this.publisherHandle?.send({ message: { request: "configure", audio: enabled, video: false } });
+            this.publisherHandle?.send({ message: { request: "configure", audio: enabled, video: this.videoEnabled } });
         } catch (e) {
             console.warn("configure audio toggle failed", e);
         }
@@ -165,70 +170,76 @@ export class MediaRoomClient {
         });
     }
 
-   
-    _printStats = async () => {
-        const pc = this.publisherHandle?.webrtcStuff?.pc;
-        if (!pc) return;
-
-        try {
-            const stats = await pc.getStats();
-            stats.forEach(report => {
-                if (report.type === "outbound-rtp" && report.kind === "audio") {
-                    console.log("Outbound audio stats:", report);
-                }
-                if (report.type === "transceiver") {
-                    console.log("Transceiver:", report.mid, report.direction);
-                }
-            });
-        } catch (err) {
-            console.warn("getStats failed:", err);
+    newRemoteFeed = (feedId, streams = []) => {
+            const feed = Number(feedId);
+        if (!Number.isInteger(feed) || feed <= 0) {
+            
+            return;
         }
-    };
 
-  
-    newRemoteFeed = (feedId, display) => {
-        if (this.subscriberHandles.has(feedId)) return;
+        if (this.subscriberHandles.has(feed)) {
+            this._updateRemoteSubscription(feed, streams);
+            return;
+        }
+
         let handle;
+
         this.janus.attach({
             plugin: "janus.plugin.videoroom",
             success: ph => {
                 handle = ph;
-                this.subscriberHandles.set(feedId, ph);
+                this.subscriberHandles.set(feed, ph);
 
-                const subscribe = {
-                    request: "join",
-                    room: this.roomId,
-                    ptype: "subscriber",
-                    private_id: this.privateId,
-                    streams: [{ feed: feedId }],
-                };
-                ph.send({ message: subscribe });
+                const streamList = Array.isArray(streams)
+                    ? streams.filter(s => s.mid).map(s => ({ feed, mid: s.mid }))
+                    : [];
+
+                const desiredStreams = streamList.length ? streamList : [{ feed }];
+
+                const subscribed = new Set(desiredStreams.map(s => s.mid ?? "__default"));
+                this.feedSubscriptions.set(feed, subscribed);
+
+                ph.send({
+                    message: {
+                        request: "join",
+                        room: this.roomId,
+                        ptype: "subscriber",
+                        private_id: this.privateId,
+                        streams: desiredStreams
+                    }
+                });
             },
+            
             onmessage: (msg, jsep) => {
-                if (msg["videoroom"] === "attached" && jsep && handle) {
+                
+                if (jsep && handle && jsep.type === "offer") {
                     handle.createAnswer({
                         jsep,
-                        media: { audioRecv: true, videoRecv: false },
+                        media: { audioRecv: true, videoRecv: true },
                         success: answer => {
                             handle.send({
                                 message: { request: "start", room: this.roomId },
                                 jsep: answer,
                             });
                         },
-                        error: err => console.error("[Subscriber answer error]", err),
+                        
                     });
                 }
             },
-            onremotetrack: (track, mid, on) => {
-                if (!on) return;
-                this.__processRemoteStream(new MediaStream([track]), feedId);
+            onremotetrack: (track,mid, on) => {
+                if (!on){
+                this._removeRemoteTrack(feed, track);
+                return;
+                }
+                this._addRemoteTrack(feed, track);
             },
             oncleanup: () => {
-                this.removeRemoteStream(null, feedId);
-                this.remoteStreams.delete(feedId);
-                this.subscriberHandles.delete(feedId);
+                this.removeRemoteStream(null, feed);
+                this.remoteStreams.delete(feed);
+                this.subscriberHandles.delete(feed);
+                this.feedSubscriptions.delete(feed);
             },
-            error: err => console.error("[Subscriber attach error]", err),
+            
         });
     };
 
@@ -239,43 +250,167 @@ export class MediaRoomClient {
         this.subscriberHandles.delete(feedId);
         this.remoteStreams.delete(feedId);
         this.removeRemoteStream(null, feedId);
+        this.feedSubscriptions.delete(feedId);
+    };
+    
+    _updateRemoteSubscription = (feedId, streams) => {
+            const feed = Number(feedId);
+        if (!Number.isInteger(feed) || feed <= 0) {
+            console.warn("Invalid feed id:", feedId);
+            return;
+        }
+
+        const handle = this.subscriberHandles.get(feed);
+        if (!handle) return;
+
+        const subscribed = this.feedSubscriptions.get(feed) || new Set();
+
+        const streamList = Array.isArray(streams)
+            ? streams.filter(s => s.mid).map(s => ({ feed, mid: s.mid }))
+            : [];
+
+        const newStreams = streamList.filter(s => !subscribed.has(s.mid));
+        if (!newStreams.length) return;
+
+        newStreams.forEach(s => subscribed.add(s.mid));
+        this.feedSubscriptions.set(feed, subscribed);
+
+        handle.send({
+            message: {
+                request: "subscribe",
+                streams: newStreams
+            }
+        });
     };
 
-    __processRemoteStream(stream, feedId) {
+    _ensureRemoteFeed = (pub) => {
+        const streams = Array.isArray(pub.streams) ? pub.streams : [];
+        if (this.subscriberHandles.has(pub.id)) {
+            this._updateRemoteSubscription(pub.id, streams);
+        } else {
+            this.newRemoteFeed(pub.id, pub.display, streams);
+        }
+    };
+    _addRemoteTrack = (feedId, track) => {
+        const existing = this.remoteStreams.get(feedId) || new MediaStream();
+        if (!existing.getTracks().some(t => t.id === track.id)) {
+            existing.addTrack(track);
+        }
         if (!this.remoteAudioEnabled) {
-            stream.getAudioTracks().forEach(t => {
+            existing.getAudioTracks().forEach(t => {
                 t.enabled = false;
             });
         }
-        this.remoteStreams.set(feedId, stream);
-        this.addRemoteStream(stream, feedId);
+        this.remoteStreams.set(feedId, existing);
+        this.addRemoteStream(existing, feedId);
+    };
+
+    _removeRemoteTrack = (feedId, track) => {
+        const existing = this.remoteStreams.get(feedId);
+        if (!existing)
+        {
+            return;
+        } 
+        existing.removeTrack(track);
+        if( existing.getTracks().length === 0)
+        {    
+           this.remoteStreams.delete(feedId);
+            this.removeRemoteStream(null, feedId);
+        } else 
+        {
+             this.addRemoteStream(existing, feedId);
+        }
+    }
+
+    async setVideoEnabled(enabled) {
+        this.videoEnabled = enabled;
+
+        if(!this.localStream) {
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                audio: this.audioDeviceId
+                    ? { deviceId: { exact: this.audioDeviceId } }
+                    : true,
+                video: this.videoEnabled ,
+        });
+            this.setLocalStream(this.localStream);
+        } else if (enabled && this.localStream.getVideoTracks().length === 0) {
+            const camera = await navigator.mediaDevices.getUserMedia({ video: true });
+            const cameraTrack = camera.getVideoTracks()[0];
+            if (cameraTrack) {
+                this.localStream.addTrack(cameraTrack);
+                this.setLocalStream(this.localStream);
+            }
+    } else if (!enabled) {
+            this.localStream.getVideoTracks().forEach(track => {
+                try { track.stop(); } catch {
+                    console.warn("Failed to stop video track");
+                }
+                this.localStream.removeTrack(track);
+            });
+            this.setLocalStream(this.localStream);
+        }
+        if (this.localStream) {
+            this.localStream.getAudioTracks().forEach(t => {
+            t.enabled = this.audioEnabled;
+        });
+    }
+        if(this.publisherHandle) {
+            this.publisherHandle.createOffer({
+                media: { audioSend: this.audioEnabled, videoSend: this.videoEnabled },
+                stream: this.localStream,
+                success: jsep => {
+                    this.publisherHandle.send({
+                        message: { request: "configure", audio: this.audioEnabled, video: this.videoEnabled },
+                        jsep,
+                    });
+                },
+                error: err => console.error("Publish offer error", err),
+            });
+        }
     }
 
     async leaveRoom() {
         try {
-            // Detach all subscribers
+            
             for (const handle of this.subscriberHandles.values()) {
                 try { handle.detach(); } catch (e) { console.warn("detach subscriber failed", e); }
             }
             this.subscriberHandles.clear();
             this.remoteStreams.clear();
 
-            // Detach publisher
+            
             if (this.publisherHandle) {
-                try { this.publisherHandle.hangup(true); } catch {}
-                try { this.publisherHandle.detach(); } catch (e) { console.warn("detach publisher failed", e); }
+                try { 
+                    this.publisherHandle.hangup(true); 
+                } catch 
+                { 
+                    console.warn("hangup publisher failed");
+                }
+                try {
+                     this.publisherHandle.detach();
+                } catch (e) 
+                { 
+                console.warn("detach publisher failed", e);
+                }
                 this.publisherHandle = null;
             }
 
-            // Destroy Janus session
+            
             if (this.janus) {
-                try { this.janus.destroy(); } catch (e) { console.warn("janus destroy failed", e); }
+                try { 
+                    this.janus.destroy(); 
+                } catch (e) 
+                { 
+                    console.warn("janus destroy failed", e); 
+                }
                 this.janus = null;
             }
 
-            // Stop local media tracks
+            
             if (this.localStream) {
-                this.localStream.getTracks().forEach(t => { try { t.stop(); } catch {} });
+                this.localStream.getTracks().forEach(t => { try { t.stop(); } catch {
+                    console.warn("Failed to stop local track");
+                } });
                 this.localStream = null;
                 this.setLocalStream(null);
             }

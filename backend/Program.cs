@@ -1,6 +1,7 @@
 
 
 
+using System.Text.Json;
 using Amazon.S3;
 using backend.Context;
 using backend.Helper;
@@ -71,7 +72,12 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddSignalR();
-builder.Services.AddAuthorization();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("SysAdmin", policy =>
+        policy.RequireClaim("is_sys_admin", "true"));
+});
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUserContext, UserContext>();
@@ -90,6 +96,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IVoiceService, VoiceService>();
 builder.Services.AddScoped<IS3StorageService, S3StorageService>();
 builder.Services.AddScoped<IFriendService, FriendService>();
+builder.Services.AddScoped<IDmService, DmService>();
 builder.Services.AddSingleton<IEmbeddingService, EmbeddingService>();
 builder.Services.AddScoped<IEncryptionService,EncryptionService>();
 builder.Services.AddHttpClient();
@@ -106,9 +113,7 @@ builder.Services.AddCors(options =>
 
 
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-    ConnectionMultiplexer.Connect("redis:6379")
-    );
+
 
 builder.Services.AddSingleton<IAmazonS3>(options =>
 {
