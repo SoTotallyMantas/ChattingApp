@@ -355,7 +355,7 @@ namespace backend.Services
                 throw new Exception("Not a member");
 
             limit = Math.Clamp(limit, 1, 50);
-            double minScore = 0.78;
+            double minScore = 0.65;
             minScore = Math.Clamp(minScore, 0.0, 1.0);
             var maxDistance = 1.0 - minScore;
 
