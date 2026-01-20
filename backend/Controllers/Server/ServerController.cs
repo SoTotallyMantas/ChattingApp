@@ -74,7 +74,7 @@ namespace backend.Controllers.Server
         {
             var result = await _serverService.GetServerIconAsync(serverGuid, ct);
             if (result == null) return NotFound();
-            Response.Headers.CacheControl = "public,max-age=86400";
+            Response.Headers.CacheControl = "public,max-age=31536000,immutable";
             return File(result.Value.stream, result.Value.contentType ?? "application/octet-stream");
         }
     }

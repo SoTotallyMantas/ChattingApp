@@ -6,6 +6,7 @@ import {
     joinServer,
     revokeInvite,
 } from "../api/invites";
+import { onSignalREvent, removeSignalREvent } from "../signalr";
 
 export function useInvites(serverGuid) {
     const [invites, setInvites] = useState([]);
@@ -36,6 +37,17 @@ export function useInvites(serverGuid) {
 
     useEffect(() => {
         loadInvites();
+    }, [serverGuid]);
+
+    useEffect(() => {
+        if (!serverGuid) return;
+        const handleInvitesUpdated = (payload) => {
+            const incomingServer = payload?.serverGuid ?? payload?.ServerGuid;
+            if (!incomingServer || incomingServer !== serverGuid) return;
+            loadInvites();
+        };
+        onSignalREvent("ServerInvitesUpdated", handleInvitesUpdated);
+        return () => removeSignalREvent("ServerInvitesUpdated", handleInvitesUpdated);
     }, [serverGuid]);
 
     return {

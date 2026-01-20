@@ -11,6 +11,7 @@ const listeners = {
     UserPresenceChanged: [],
     FriendsUpdated: [],
     ServerMembersUpdated: [],
+    ServerInvitesUpdated: [],
     ServerMembershipRemoved: [],
     UserProfileUpdated: [],
     ServerUpdated: [],
@@ -72,6 +73,7 @@ export function getConnection() {
     connection.on("UserPresenceChanged", payload => emit("UserPresenceChanged", payload));
     connection.on("FriendsUpdated", payload => emit("FriendsUpdated", payload));
     connection.on("ServerMembersUpdated", payload => emit("ServerMembersUpdated", payload));
+    connection.on("ServerInvitesUpdated", payload => emit("ServerInvitesUpdated", payload));
     connection.on("ServerMembershipRemoved", payload => emit("ServerMembershipRemoved", payload));
     connection.on("UserProfileUpdated", payload => emit("UserProfileUpdated", payload));
     connection.on("ServerUpdated", payload => emit("ServerUpdated", payload));
@@ -130,5 +132,21 @@ export function getConnection() {
     );
 
     return connection;
+}
+
+export async function resetChatConnection() {
+    if (!connection) return;
+    try {
+        if (connection.state !== signalR.HubConnectionState.Disconnected) {
+            await connection.stop();
+        }
+    } catch (err) {
+        console.warn("SignalR chat stop failed:", err);
+    } finally {
+        connection = null;
+        startPromise = null;
+        connectionState.servers = [];
+        connectionState.channel = null;
+    }
 }
 

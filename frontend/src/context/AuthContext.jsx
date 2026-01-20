@@ -1,7 +1,8 @@
-import { createContext,useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import api, { setAccessToken as setGlobalAccessToken } from "../api/axios";
 import { apiLogout } from "../api/auth";
-import { onSignalREvent, removeSignalREvent } from "../signalr/index";
+import { getConnection, onSignalREvent, removeSignalREvent, resetChatConnection } from "../signalr/index";
+import { resetMediaConnection } from "../signalr/Media";
 
 const AuthContext = createContext();
 
@@ -65,6 +66,12 @@ export function AuthProvider({ children }) {
     }, []);
 
     useEffect(() => {
+        if (!accessToken) return;
+        const conn = getConnection();
+        conn.ensureStarted().catch(console.error);
+    }, [accessToken]);
+
+    useEffect(() => {
         const handleProfileUpdated = (payload) => {
             const userGuid = payload?.userGuid;
             if (!userGuid) return;
@@ -85,6 +92,8 @@ export function AuthProvider({ children }) {
         try {
             await apiLogout();
         } catch { err }
+        await resetMediaConnection();
+        await resetChatConnection();
         setToken(null);
         setUser(null);
     };

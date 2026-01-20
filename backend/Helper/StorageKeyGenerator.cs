@@ -10,7 +10,8 @@
 
         public static string ServerIcon(Guid serverGuid)
         {
-            return $"servers/{serverGuid}/icon";
+            var unique = Guid.NewGuid().ToString("N");
+            return $"servers/{serverGuid}/icon/{unique}";
         }
         public static string MessageAttachment(Guid channelGuid, Guid messageGuid, Guid attachmentGuid)
         {

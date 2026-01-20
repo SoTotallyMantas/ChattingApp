@@ -6,7 +6,7 @@ export function getServerIconSrc(server) {
     if (isUrlLike(iconKey)) return iconKey;
     if (server.serverGuid) {
         const encodedKey = encodeURIComponent(iconKey);
-        return `/api/servers/${server.serverGuid}/icon?v=${encodedKey}&t=${Date.now()}`;
+        return `/api/servers/${server.serverGuid}/icon?v=${encodedKey}`;
     }
     return null;
 }
