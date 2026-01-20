@@ -64,3 +64,17 @@ export function getUnifiedConnection() {
 
     return conn;
 }
+
+export async function resetMediaConnection() {
+    if (!conn) return;
+    try {
+        if (conn.state !== signalR.HubConnectionState.Disconnected) {
+            await conn.stop();
+        }
+    } catch (err) {
+        console.warn("SignalR media stop failed:", err);
+    } finally {
+        conn = null;
+        startPromise = null;
+    }
+}

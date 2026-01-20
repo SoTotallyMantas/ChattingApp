@@ -5,18 +5,21 @@ using backend.DTO.ServerDtos;
 using backend.DTO.UserDtos;
 using backend.Extensions;
 using backend.Helper;
+using backend.Hubs;
 using backend.Interfaces;
 using backend.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace backend.Services.Server
 {
-    public class ServerRolesService(VoxlockDbContext db , IPermissionEvualuator perm, IServerHelper helper) : IServerRolesService
+    public class ServerRolesService(VoxlockDbContext db , IPermissionEvualuator perm, IServerHelper helper, IHubContext<ChatHub> hubContext) : IServerRolesService
     {
         private readonly VoxlockDbContext _db = db;
         private readonly IPermissionEvualuator _perm = perm;
         private readonly IServerHelper _helper = helper;
+        private readonly IHubContext<ChatHub> _hubContext = hubContext;
         private readonly CheckHierarchy _checker = new(db);
         private static string NormalizeRoleName(string roleName)
         {
@@ -70,6 +73,7 @@ namespace backend.Services.Server
             _db.ServerRoles.Add(role);
 
             await _db.SaveChangesAsync();
+            await NotifyServerMembersUpdatedAsync(serverGuid);
             await _db.Entry(role)
                 .Collection(r => r.RolePermissions)
                 .Query()
@@ -121,6 +125,7 @@ namespace backend.Services.Server
             role.Position = dto.Position;
 
             await _db.SaveChangesAsync();
+            await NotifyServerMembersUpdatedAsync(serverGuid);
             return MapRole(role);
         }
 
@@ -161,6 +166,7 @@ namespace backend.Services.Server
             _db.ServerRoles.Remove(role);
 
             await _db.SaveChangesAsync();
+            await NotifyServerMembersUpdatedAsync(serverGuid);
         }
 
         public async Task AssignRoleToUserAsync(Guid serverGuid, Guid roleGuid, AssignRoleRequestDto dto, ClaimsPrincipal user)
@@ -215,6 +221,7 @@ namespace backend.Services.Server
             });
 
             await _db.SaveChangesAsync();
+            await NotifyServerMembersUpdatedAsync(serverGuid);
         }
 
         public async Task RemoveRoleFromUserAsync(Guid serverGuid, Guid roleGuid, RemoveRoleRequestDto dto, ClaimsPrincipal user)
@@ -255,6 +262,7 @@ namespace backend.Services.Server
 
             _db.ServerUserRoles.Remove(userRole);
             await _db.SaveChangesAsync();
+            await NotifyServerMembersUpdatedAsync(serverGuid);
         }
 
        
@@ -415,6 +423,10 @@ namespace backend.Services.Server
                 {
                     continue;
                 }
+                if (role.Position == item.Position)
+                {
+                    continue;
+                }
                 if(server.OwnerGuid != userGuid)
                 {
                     if (role!.Position <= actorPos)
@@ -436,6 +448,7 @@ namespace backend.Services.Server
             }
 
             await _db.SaveChangesAsync();
+            await NotifyServerMembersUpdatedAsync(serverGuid);
         }
 
         private ServerRoleResponseDto MapRole(ServerRoles role)
@@ -458,6 +471,13 @@ namespace backend.Services.Server
                     })
                     .ToList()
             };
+        }
+
+        private Task NotifyServerMembersUpdatedAsync(Guid serverGuid)
+        {
+            return _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerMembersUpdated", new { serverGuid });
         }
     }
 }

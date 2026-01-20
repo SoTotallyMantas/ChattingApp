@@ -42,6 +42,7 @@ namespace backend.Services.Server
 
             _db.ServerInvites.Add(invite);
             await _db.SaveChangesAsync();
+            await NotifyServerInvitesUpdatedAsync(serverGuid);
 
             return MapInvite(invite);
         }
@@ -122,6 +123,7 @@ namespace backend.Services.Server
             invite.Uses++;
 
             await _db.SaveChangesAsync();
+            await NotifyServerInvitesUpdatedAsync(invite.ServerGuid);
             if (membershipAdded)
             {
                 await _hubContext.Clients
@@ -170,6 +172,7 @@ namespace backend.Services.Server
            
             _db.ServerInvites.Remove(invite);
             await _db.SaveChangesAsync();
+            await NotifyServerInvitesUpdatedAsync(invite.ServerGuid);
         }
 
 
@@ -184,6 +187,13 @@ namespace backend.Services.Server
                 MaxUses = invite.MaxUses,
                 Uses = invite.Uses
             };
+        }
+
+        private Task NotifyServerInvitesUpdatedAsync(Guid serverGuid)
+        {
+            return _hubContext.Clients
+                .Group($"server-{serverGuid}")
+                .SendAsync("ServerInvitesUpdated", new { serverGuid });
         }
     }
 }
