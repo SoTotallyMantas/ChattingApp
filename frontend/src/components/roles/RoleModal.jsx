@@ -141,9 +141,7 @@ export default function RoleModal({ isCreating, roleData, onClose }) {
                             }}
                         />
                         {perm.permissionName}
-                        {!isAllowed && !isLocked && (
-                            <span className="role-modal-permission-hint"> (not allowed)</span>
-                        )}
+                        
                     </label>
                 );
             })}
